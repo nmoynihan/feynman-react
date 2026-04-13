@@ -1,75 +1,132 @@
 import type { Diagram } from "./types";
 
 export const exampleDiagrams = {
-  simpleExchange: {
+  /**
+   * Møller scattering: e⁻e⁻ → e⁻e⁻ via single virtual photon (t-channel).
+   */
+  moellerScattering: {
     vertices: [
-      { id: "a", x: 80, y: 120, label: "$e^{-}$", kind: "none", labelOffset: { x: -26, y: -8 } },
-      { id: "b", x: 200, y: 120, kind: "dot" },
-      { id: "c", x: 320, y: 120, kind: "dot" },
-      { id: "d", x: 440, y: 120, label: "$e^{-}$", kind: "none", labelOffset: { x: 26, y: -8 } },
-      { id: "e", x: 80, y: 260, label: "$e^{-}$", kind: "none", labelOffset: { x: -26, y: 18 } },
-      { id: "f", x: 200, y: 260, kind: "dot" },
-      { id: "g", x: 320, y: 260, kind: "dot" },
-      { id: "h", x: 440, y: 260, label: "$e^{-}$", kind: "none", labelOffset: { x: 26, y: 18 } }
+      { id: "i1", x: 80, y: 80, label: "$e^{-}$", kind: "none", labelOffset: { x: -24, y: -8 } },
+      { id: "v1", x: 260, y: 80, kind: "dot" },
+      { id: "o1", x: 440, y: 80, label: "$e^{-}$", kind: "none", labelOffset: { x: 24, y: -8 } },
+      { id: "i2", x: 80, y: 260, label: "$e^{-}$", kind: "none", labelOffset: { x: -24, y: 18 } },
+      { id: "v2", x: 260, y: 260, kind: "dot" },
+      { id: "o2", x: 440, y: 260, label: "$e^{-}$", kind: "none", labelOffset: { x: 24, y: 18 } }
     ],
     edges: [
-      { id: "ab", from: "a", to: "b", type: "fermion" },
-      { id: "bc", from: "b", to: "c", type: "photon", label: "$q^\\mu$", labelSide: "left" },
-      { id: "cd", from: "c", to: "d", type: "fermion" },
-      { id: "ef", from: "e", to: "f", type: "fermion" },
-      { id: "fg", from: "f", to: "g", type: "photon", label: "$q^\\mu$", labelSide: "right" },
-      { id: "gh", from: "g", to: "h", type: "fermion" }
-    ],
-    style: {
-      fontSize: 15
-    }
-  },
-  qedVertex: {
-    vertices: [
-      { id: "left", x: 80, y: 220, label: "$e^{-}$", labelOffset: { x: -24, y: -8 } },
-      { id: "mid", x: 240, y: 180, kind: "dot" },
-      { id: "right", x: 420, y: 100, label: "$e^{-}$", labelOffset: { x: 24, y: -10 } },
-      { id: "top", x: 420, y: 280, label: "$\\gamma$", labelOffset: { x: 22, y: 0 } }
-    ],
-    edges: [
-      { id: "in", from: "left", to: "mid", type: "fermion", momentum: "p" },
-      { id: "out", from: "mid", to: "right", type: "fermion", momentum: "p'" },
-      { id: "boson", from: "mid", to: "top", type: "photon", momentum: "$k^\\mu$", momentumDirection: "backward" }
+      { id: "in1", from: "i1", to: "v1", type: "fermion", momentum: "$p_1$" },
+      { id: "out1", from: "v1", to: "o1", type: "fermion", momentum: "$p_1'$" },
+      { id: "photon", from: "v1", to: "v2", type: "photon", label: "$\\gamma$" },
+      { id: "in2", from: "i2", to: "v2", type: "fermion", momentum: "$p_2$" },
+      { id: "out2", from: "v2", to: "o2", type: "fermion", momentum: "$p_2'$" }
     ]
   },
-  loopCurves: {
-    viewBox: { x: 36, y: 12, width: 448, height: 284 },
+
+  /**
+   * Pair annihilation: e⁺e⁻ → μ⁺μ⁻ via s-channel virtual photon.
+   */
+  pairAnnihilation: {
     vertices: [
-      { id: "l", x: 100, y: 180, label: "$\\psi$", labelOffset: { x: -20, y: -12 } },
-      { id: "v1", x: 200, y: 180, kind: "dot" },
-      { id: "v2", x: 320, y: 180, kind: "dot" },
-      { id: "r", x: 420, y: 180, label: "$\\psi$", labelOffset: { x: 20, y: -12 } }
+      { id: "i1", x: 80, y: 80, label: "$e^{-}$", kind: "none", labelOffset: { x: -24, y: -8 } },
+      { id: "i2", x: 80, y: 260, label: "$e^{+}$", kind: "none", labelOffset: { x: -24, y: 18 } },
+      { id: "v1", x: 230, y: 170, kind: "dot" },
+      { id: "v2", x: 370, y: 170, kind: "dot" },
+      { id: "o1", x: 520, y: 80, label: "$\\mu^{-}$", kind: "none", labelOffset: { x: 28, y: -8 } },
+      { id: "o2", x: 520, y: 260, label: "$\\mu^{+}$", kind: "none", labelOffset: { x: 28, y: 18 } }
     ],
     edges: [
-      { id: "in", from: "l", to: "v1", type: "fermion" },
-      { id: "upper", from: "v1", to: "v2", type: "fermion", curve: "quadratic", bend: -90, label: "$\\ell$" },
-      { id: "lower", from: "v2", to: "v1", type: "antiFermion", curve: "quadratic", bend: -90, label: "$\\ell-k$", labelSide: "right" },
-      { id: "out", from: "v2", to: "r", type: "fermion" },
-      { id: "ext", from: "v1", to: "v2", type: "photon", curve: "arc", bend: 70, momentum: "k" }
+      { id: "e-in", from: "i1", to: "v1", type: "fermion" },
+      { id: "e+in", from: "i2", to: "v1", type: "antiFermion" },
+      { id: "gamma", from: "v1", to: "v2", type: "photon", label: "$\\gamma^{*}$" },
+      { id: "mu-out", from: "v2", to: "o1", type: "fermion" },
+      { id: "mu+out", from: "v2", to: "o2", type: "antiFermion" }
     ]
   },
-  mixedStyles: {
+
+  /**
+   * Compton scattering: e⁻γ → e⁻γ (s-channel).
+   * Electron absorbs a photon, propagates, then emits a photon.
+   */
+  comptonScattering: {
     vertices: [
-      { id: "s1", x: 90, y: 110, label: "$\\phi$", labelOffset: { x: -22, y: -8 } },
-      { id: "v1", x: 200, y: 160, kind: "blob" },
-      { id: "v2", x: 340, y: 160, kind: "cross" },
-      { id: "s2", x: 460, y: 120, label: "g", labelOffset: { x: 22, y: -10 } },
-      { id: "s3", x: 460, y: 240, label: "H", labelOffset: { x: 22, y: 16 } }
+      { id: "ei", x: 80, y: 200, label: "$e^{-}$", kind: "none", labelOffset: { x: -24, y: -8 } },
+      { id: "v1", x: 230, y: 200, kind: "dot" },
+      { id: "v2", x: 370, y: 200, kind: "dot" },
+      { id: "eo", x: 520, y: 200, label: "$e^{-}$", kind: "none", labelOffset: { x: 24, y: -8 } },
+      { id: "gi", x: 230, y: 50, label: "$\\gamma$", kind: "none", labelOffset: { x: 0, y: -16 } },
+      { id: "go", x: 370, y: 350, label: "$\\gamma$", kind: "none", labelOffset: { x: 0, y: 18 } }
     ],
     edges: [
-      { id: "scalar", from: "s1", to: "v1", type: "scalar", momentum: "p" },
-      { id: "ghost", from: "v1", to: "v2", type: "ghost", curve: "arc", bend: -55, label: "c" },
-      { id: "gluon", from: "v1", to: "s2", type: "gluon", curve: "quadratic", bend: -50, momentum: "$q_a$" },
-      { id: "graviton", from: "v2", to: "s3", type: "graviton", curve: "quadratic", bend: 45, label: "$G_{\\mu\\nu}$" },
-      { id: "plain", from: "v1", to: "s3", type: "plain", curve: "arc", bend: 90, label: "mix" }
+      { id: "e-in", from: "ei", to: "v1", type: "fermion", momentum: "$p$" },
+      { id: "prop", from: "v1", to: "v2", type: "fermion", label: "$e^{-}$" },
+      { id: "e-out", from: "v2", to: "eo", type: "fermion", momentum: "$p'$" },
+      { id: "g-in", from: "gi", to: "v1", type: "photon", momentum: "$k$" },
+      { id: "g-out", from: "v2", to: "go", type: "photon", momentum: "$k'$" }
+    ]
+  },
+
+  /**
+   * QED vacuum polarization: the photon self-energy with an electron–positron loop.
+   */
+  vacuumPolarization: {
+    vertices: [
+      { id: "l", x: 80, y: 170, label: "$\\gamma$", kind: "none", labelOffset: { x: -22, y: -12 } },
+      { id: "v1", x: 230, y: 170, kind: "dot" },
+      { id: "v2", x: 370, y: 170, kind: "dot" },
+      { id: "r", x: 520, y: 170, label: "$\\gamma$", kind: "none", labelOffset: { x: 22, y: -12 } }
     ],
-    labels: [
-      { id: "caption", x: 280, y: 40, text: "$\\mathcal{M}_{\\mathrm{mix}}$", style: { fontSize: 18 } }
+    edges: [
+      { id: "g-in", from: "l", to: "v1", type: "photon", momentum: "$q$" },
+      { id: "top", from: "v1", to: "v2", type: "fermion", curve: "quadratic", bend: 80, label: "$e^{-}$" },
+      { id: "bot", from: "v2", to: "v1", type: "fermion", curve: "quadratic", bend: 80, label: "$e^{+}$", labelSide: "right" },
+      { id: "g-out", from: "v2", to: "r", type: "photon", momentum: "$q$" }
+    ]
+  },
+
+  /**
+   * Higgs production via gluon fusion: gg → H through a top-quark triangle loop.
+   * Dominant Higgs production mechanism at the LHC.
+   */
+  higgsGluonFusion: {
+    vertices: [
+      { id: "g1", x: 60, y: 80, label: "$g$", kind: "none", labelOffset: { x: -20, y: -10 } },
+      { id: "g2", x: 60, y: 260, label: "$g$", kind: "none", labelOffset: { x: -20, y: 18 } },
+      { id: "v1", x: 200, y: 80, kind: "dot" },
+      { id: "v2", x: 200, y: 260, kind: "dot" },
+      { id: "v3", x: 360, y: 170, kind: "dot" },
+      { id: "h", x: 500, y: 170, label: "$H$", kind: "none", labelOffset: { x: 22, y: -10 } }
+    ],
+    edges: [
+      { id: "gl1", from: "g1", to: "v1", type: "gluon" },
+      { id: "gl2", from: "g2", to: "v2", type: "gluon" },
+      { id: "t1", from: "v1", to: "v3", type: "fermion", label: "$t$" },
+      { id: "t2", from: "v3", to: "v2", type: "fermion", label: "$t$", labelSide: "right" },
+      { id: "t3", from: "v2", to: "v1", type: "fermion", label: "$t$" },
+      { id: "higgs", from: "v3", to: "h", type: "scalar" }
+    ]
+  },
+
+  /**
+   * QED vertex correction (one-loop): contributes to the electron anomalous
+   * magnetic moment (g − 2). A virtual photon spans two vertices on the
+   * electron line, forming a triangular loop.
+   */
+  vertexCorrection: {
+    vertices: [
+      { id: "ei", x: 60, y: 200, label: "$e^{-}$", kind: "none", labelOffset: { x: -24, y: -8 } },
+      { id: "v1", x: 180, y: 200, kind: "dot" },
+      { id: "v2", x: 300, y: 200, kind: "dot" },
+      { id: "v3", x: 420, y: 200, kind: "dot" },
+      { id: "eo", x: 540, y: 200, label: "$e^{-}$", kind: "none", labelOffset: { x: 24, y: -8 } },
+      { id: "ext", x: 300, y: 360, label: "$\\gamma$", kind: "none", labelOffset: { x: 0, y: 18 } }
+    ],
+    edges: [
+      { id: "e-in", from: "ei", to: "v1", type: "fermion", momentum: "$p$" },
+      { id: "f1", from: "v1", to: "v2", type: "fermion" },
+      { id: "f2", from: "v2", to: "v3", type: "fermion" },
+      { id: "e-out", from: "v3", to: "eo", type: "fermion", momentum: "$p'$" },
+      { id: "loop-g", from: "v1", to: "v3", type: "photon", curve: "quadratic", bend: 80, label: "$\\gamma$" },
+      { id: "ext-g", from: "ext", to: "v2", type: "photon", momentum: "$q$" }
     ]
   }
 } satisfies Record<string, Diagram>;

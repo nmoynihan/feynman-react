@@ -11,8 +11,8 @@ function cloneDiagram(diagram: Diagram): Diagram {
 }
 
 export function App() {
-  const [selectedExample, setSelectedExample] = useState<ExampleKey>(exampleEntries[0]?.[0] ?? "simpleExchange");
-  const [diagram, setDiagram] = useState<Diagram>(() => cloneDiagram(exampleEntries[0]?.[1] ?? exampleDiagrams.simpleExchange));
+  const [selectedExample, setSelectedExample] = useState<ExampleKey>(exampleEntries[0]?.[0] ?? "moellerScattering");
+  const [diagram, setDiagram] = useState<Diagram>(() => cloneDiagram(exampleEntries[0]?.[1] ?? exampleDiagrams.moellerScattering));
   const [jsonText, setJsonText] = useState(() => serializeDiagram(diagram));
   const [error, setError] = useState<string | null>(null);
   const [useMathJax, setUseMathJax] = useState(true);

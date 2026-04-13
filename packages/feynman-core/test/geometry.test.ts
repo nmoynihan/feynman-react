@@ -62,7 +62,7 @@ describe("computeEdgeGeometry", () => {
   }
 
   it("adds arrow markers for fermion edges", () => {
-    const { normalized, edge } = getEdge(exampleDiagrams.qedVertex, "in");
+    const { normalized, edge } = getEdge(exampleDiagrams.moellerScattering, "in1");
     const geometry = computeEdgeGeometry(edge, normalized.vertexMap, normalized.style);
     const flowArrow = geometry.paths.find((path) => path.id.endsWith("flow-arrow"));
 
@@ -71,14 +71,23 @@ describe("computeEdgeGeometry", () => {
   });
 
   it("builds multiple paths for gravitons", () => {
-    const { normalized, edge } = getEdge(exampleDiagrams.mixedStyles, "graviton");
+    const diagram: Diagram = {
+      vertices: [
+        { id: "a", x: 0, y: 0, kind: "dot" },
+        { id: "b", x: 0, y: 120, kind: "dot" }
+      ],
+      edges: [
+        { id: "grav", from: "a", to: "b", type: "graviton" }
+      ]
+    };
+    const { normalized, edge } = getEdge(diagram, "grav");
     const geometry = computeEdgeGeometry(edge, normalized.vertexMap, normalized.style);
 
     expect(geometry.paths.length).toBeGreaterThanOrEqual(2);
   });
 
   it("renders multi-segment photon waves on straight edges", () => {
-    const { normalized, edge } = getEdge(exampleDiagrams.simpleExchange, "bc");
+    const { normalized, edge } = getEdge(exampleDiagrams.moellerScattering, "photon");
     const geometry = computeEdgeGeometry(edge, normalized.vertexMap, normalized.style);
     const cubicSegments = geometry.paths[0]?.d.match(/C/g) ?? [];
 
@@ -125,12 +134,13 @@ describe("computeEdgeGeometry", () => {
 });
 
 describe("buildSvgScene", () => {
-  it("renders mixed examples into scene paths and labels", () => {
-    const scene = buildSvgScene(exampleDiagrams.mixedStyles);
+  it("renders all example diagrams into scene graphs", () => {
+    for (const [key, diagram] of Object.entries(exampleDiagrams)) {
+      const scene = buildSvgScene(diagram);
 
-    expect(scene.paths.length).toBeGreaterThan(4);
-    expect(scene.labels.length).toBeGreaterThan(2);
-    expect(scene.vertices.length).toBe(2);
+      expect(scene.paths.length, `${key} should have paths`).toBeGreaterThan(0);
+      expect(scene.labels.length, `${key} should have labels`).toBeGreaterThan(0);
+    }
   });
 
   it("expands the auto viewBox for tall loop curves", () => {
@@ -151,7 +161,7 @@ describe("buildSvgScene", () => {
 
 describe("serialization", () => {
   it("round-trips diagram JSON", () => {
-    const source = exampleDiagrams.simpleExchange;
+    const source = exampleDiagrams.moellerScattering;
     const json = serializeDiagram(source);
     const parsed = parseDiagram(json);
 
