@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "packages/feynman-core/src/**/*.ts",
+    "packages/feynman-core/test/**/*.ts",
+    "packages/feynman-react/src/**/*.ts",
+    "packages/feynman-react/src/**/*.tsx",
+    "apps/demo/src/**/*.ts",
+    "apps/demo/src/**/*.tsx",
+    "vitest.config.ts"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "feynman-react-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @feynman/core && npm run build -w @feynman/react && npm run build -w @feynman/demo",
+    "dev": "npm run dev -w @feynman/demo",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run build -w @feynman/core && npm run build -w @feynman/react && tsc -p tsconfig.typecheck.json --noEmit",
+    "check": "npm run lint && npm run test && npm run build && npm run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.1",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "eslint": "^9.25.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.30.1",
+    "vite": "^6.3.3",
+    "vitest": "^3.1.2"
+  }
+}
