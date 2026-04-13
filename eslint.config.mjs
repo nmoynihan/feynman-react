@@ -8,6 +8,15 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
+    files: ["eslint.config.mjs", "vitest.config.ts", "apps/demo/vite.config.ts"],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname
+      }
+    }
+  },
+  {
     languageOptions: {
       parserOptions: {
         projectService: true,

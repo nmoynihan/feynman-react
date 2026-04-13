@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@feynman/core": "file:../../packages/feynman-core",
+    "@feynman/editor": "file:../../packages/feynman-editor",
     "@feynman/react": "file:../../packages/feynman-react",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

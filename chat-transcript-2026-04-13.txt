@@ -1,0 +1,165 @@
+Chat Transcript
+Date: 2026-04-13
+Repository: /home/nathan/Dropbox/Projects/Code/feynman-react
+
+Note:
+This transcript is reconstructed from the active chat context. Earlier parts of the conversation were preserved in summarized form by the session and are included below as a faithful summary, followed by the later direct exchanges.
+
+---
+
+USER
+Can you please think of 6 real Feynman diagrams, ranging from simple to complicated, and replace the demo ones with those? Then, make sure they render as expected and fix any bugs.
+
+ASSISTANT
+Reviewed the current examples, data model, and rendering behavior. Replaced the demo examples with six real diagrams ranging from simple to more advanced:
+
+1. Moller scattering
+2. Pair annihilation
+3. Compton scattering
+4. Vacuum polarization
+5. Higgs gluon fusion
+6. QED vertex correction
+
+Updated tests to use the new examples, updated demo fallbacks, and verified rendering through builds and scene inspection.
+
+Validation completed:
+- Tests passed
+- Typecheck passed
+- Demo built successfully
+- Example scene output inspected successfully
+
+---
+
+USER
+You are working inside an existing TypeScript monorepo that already contains:
+
+- packages/feynman-core
+- packages/feynman-react
+- apps/demo
+
+Current state of the repo
+
+1. packages/feynman-core
+   - Pure TypeScript
+   - Owns the canonical Diagram model
+   - Owns normalization, geometry, path generation, and scene construction
+   - Exposes functions like:
+     - normalizeDiagram
+     - computeEdgeGeometry
+     - buildSvgScene
+     - serializeDiagram
+     - parseDiagram
+   - Manual coordinates are the primary model
+
+2. packages/feynman-react
+   - Thin React wrapper around the core scene
+   - Renders the diagram as SVG
+   - Exposes components like:
+     - FeynmanDiagramSvg
+     - FeynmanSceneSvg
+   - Has optional MathJax label rendering support
+
+3. apps/demo
+   - Vite React demo app
+   - Currently shows example diagrams and lets the user edit raw JSON
+
+Your task
+
+Build a new standalone package:
+
+- packages/feynman-editor
+
+This package should provide a fully visual GUI editor for Feynman diagrams that can later be embedded into any React app, including my slide editor.
+
+This is NOT a slide-editor-specific feature.
+It must remain standalone and reusable.
+
+High-level goal
+
+Create a front-end Feynman diagram builder with a drag/drop visual UI that edits the existing canonical Diagram JSON model.
+
+The editor should be built on top of the existing @feynman/core and @feynman/react packages.
+Do NOT replace the current renderer.
+Do NOT introduce a second canonical model.
+Do NOT make this package depend on my slide app.
+
+Architectural requirements
+
+Build the editor as a controlled React component.
+
+Target public API:
+
+<FeynmanDiagramEditor
+  value={diagram}
+  onChange={setDiagram}
+  width={900}
+  height={600}
+/>
+
+ASSISTANT
+Inspected the monorepo package boundaries, current renderer APIs, demo integration points, and workspace build wiring.
+
+Created a new standalone package at packages/feynman-editor with a controlled FeynmanDiagramEditor component built on top of @feynman/core and @feynman/react.
+
+Implemented:
+- Visual selection for vertices, edges, and labels
+- Drag interaction for vertices and labels
+- Add vertex mode
+- Add edge mode
+- Add label mode
+- Inspector panel for editing selected objects
+- Zoom in, zoom out, and fit controls
+- Keyboard delete for the current selection
+- Demo integration so the editor and raw JSON stay synchronized
+
+Updated workspace wiring:
+- package.json build and typecheck scripts
+- tsconfig.typecheck.json includes the new package
+- apps/demo/package.json depends on @feynman/editor
+- apps/demo now renders the editor instead of a read-only preview
+
+Initial verification:
+- Package builds passed
+- Demo build passed
+- Tests passed
+- Typecheck passed
+
+---
+
+USER
+It's very slow and unresponsive, although working. Anything that can be done about that? Secondly, edges should always be placed, even if ended not at a vertex (a vertex should just be created)
+
+ASSISTANT
+Identified two main causes of sluggishness:
+
+1. The demo was serializing the full diagram JSON into the textarea on every drag frame.
+2. The editor was emitting full controlled updates on every pointer event.
+
+Implemented performance and UX fixes:
+
+- Drag updates in packages/feynman-editor/src/index.tsx are now throttled to requestAnimationFrame.
+- Auto-fit viewport updates no longer fight active drags.
+- Expensive custom label rendering is skipped during active drags to reduce frame cost.
+- Demo-side JSON synchronization in apps/demo/src/App.tsx is now debounced instead of reserializing on every drag frame.
+- Add-edge mode now creates vertices automatically when the user clicks empty space.
+  - If the first click in add-edge mode is on empty space, a source vertex is created.
+  - If the second click is on empty space, a target vertex is created and the edge is committed.
+
+Also fixed lint configuration issues so repo linting became clean again.
+
+Validation completed:
+- Lint passed
+- Tests passed
+- Editor package build passed
+- Workspace typecheck passed
+- Top-level workspace build passed
+
+---
+
+USER
+Please make a copy of this chat as a text file in the repo
+
+ASSISTANT
+Created this file in the repo root as a plain text copy of the chat:
+
+chat-transcript-2026-04-13.txt

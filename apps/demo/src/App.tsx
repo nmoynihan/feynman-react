@@ -1,6 +1,7 @@
-import { startTransition, useDeferredValue, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { exampleDiagrams, parseDiagram, serializeDiagram, type Diagram } from "@feynman/core";
-import { FeynmanDiagramSvg, FeynmanMathJaxProvider, createMathJaxLabelRenderer } from "@feynman/react";
+import { FeynmanDiagramEditor } from "@feynman/editor";
+import { FeynmanMathJaxProvider, createMathJaxLabelRenderer } from "@feynman/react";
 
 type ExampleKey = keyof typeof exampleDiagrams;
 
@@ -11,17 +12,33 @@ function cloneDiagram(diagram: Diagram): Diagram {
 }
 
 export function App() {
+  const jsonSyncTimeoutRef = useRef<number | null>(null);
   const [selectedExample, setSelectedExample] = useState<ExampleKey>(exampleEntries[0]?.[0] ?? "moellerScattering");
   const [diagram, setDiagram] = useState<Diagram>(() => cloneDiagram(exampleEntries[0]?.[1] ?? exampleDiagrams.moellerScattering));
   const [jsonText, setJsonText] = useState(() => serializeDiagram(diagram));
   const [error, setError] = useState<string | null>(null);
   const [useMathJax, setUseMathJax] = useState(true);
-  const deferredDiagram = useDeferredValue(diagram);
 
   const sceneTitle = useMemo(() => selectedExample.replace(/([A-Z])/g, " $1").trim(), [selectedExample]);
   const mathJaxLabelRenderer = useMemo(() => createMathJaxLabelRenderer(), []);
 
+  useEffect(() => {
+    return () => {
+      if (jsonSyncTimeoutRef.current !== null) {
+        window.clearTimeout(jsonSyncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function clearPendingJsonSync() {
+    if (jsonSyncTimeoutRef.current !== null) {
+      window.clearTimeout(jsonSyncTimeoutRef.current);
+      jsonSyncTimeoutRef.current = null;
+    }
+  }
+
   function handleExampleChange(nextKey: ExampleKey) {
+    clearPendingJsonSync();
     const nextDiagram = cloneDiagram(exampleDiagrams[nextKey]);
     setSelectedExample(nextKey);
     setDiagram(nextDiagram);
@@ -30,6 +47,7 @@ export function App() {
   }
 
   function handleJsonChange(value: string) {
+    clearPendingJsonSync();
     setJsonText(value);
 
     startTransition(() => {
@@ -41,6 +59,19 @@ export function App() {
         setError(parseError instanceof Error ? parseError.message : "Invalid JSON");
       }
     });
+  }
+
+  function handleDiagramChange(nextDiagram: Diagram) {
+    setDiagram(nextDiagram);
+    setError(null);
+
+    clearPendingJsonSync();
+    jsonSyncTimeoutRef.current = window.setTimeout(() => {
+      startTransition(() => {
+        setJsonText(serializeDiagram(nextDiagram));
+      });
+      jsonSyncTimeoutRef.current = null;
+    }, 90);
   }
 
   return (
@@ -99,25 +130,25 @@ export function App() {
         <section className="preview-card">
           <div className="preview-header">
             <div>
-              <p className="eyebrow">Live SVG preview</p>
+              <p className="eyebrow">Standalone editor package</p>
               <h2>{sceneTitle}</h2>
             </div>
             <div className="badge-row">
-              <span className="badge">Pure SVG</span>
-              <span className="badge">React wrapper</span>
-              <span className="badge">MathJax optional</span>
+              <span className="badge">Controlled component</span>
+              <span className="badge">Canonical JSON</span>
+              <span className="badge">Drag and drop</span>
               <span className="badge">Embeddable</span>
             </div>
           </div>
 
-          <div className="diagram-frame">
+          <div className="diagram-frame editor-frame">
             <FeynmanMathJaxProvider>
-              <FeynmanDiagramSvg
-                diagram={deferredDiagram}
+              <FeynmanDiagramEditor
+                value={diagram}
+                onChange={handleDiagramChange}
                 width="100%"
                 height="100%"
                 title={sceneTitle}
-                svgStyle={{ overflow: "visible" }}
                 {...(useMathJax ? { labelRenderer: mathJaxLabelRenderer } : {})}
               />
             </FeynmanMathJaxProvider>
@@ -126,16 +157,16 @@ export function App() {
 
         <section className="notes-grid">
           <article className="note-card">
-            <h3>Library shape</h3>
-            <p>Core owns geometry, normalization, and serialization. React stays thin and replaceable.</p>
+            <h3>Standalone package</h3>
+            <p>The editor lives in its own workspace package and depends only on the existing core and React renderer packages.</p>
           </article>
           <article className="note-card">
-            <h3>Rendering model</h3>
-            <p>Manual coordinates drive deterministic curves, labels, and markers with no hidden mutable DOM state.</p>
+            <h3>Controlled editing</h3>
+            <p>Dragging vertices, labels, and inspector edits all emit the same canonical Diagram JSON model the rest of the repo already understands.</p>
           </article>
           <article className="note-card">
             <h3>Extension path</h3>
-            <p>MathJax now keys off inline delimiters rather than per-label flags, and future DSL importers can still target the same canonical JSON model.</p>
+            <p>The editor reuses the current SVG renderer, so future embedding into other React apps can stay package-level rather than slide-editor-specific.</p>
           </article>
         </section>
       </main>

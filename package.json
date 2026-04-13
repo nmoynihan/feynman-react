@@ -8,12 +8,12 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build -w @feynman/core && npm run build -w @feynman/react && npm run build -w @feynman/demo",
+    "build": "npm run build -w @feynman/core && npm run build -w @feynman/react && npm run build -w @feynman/editor && npm run build -w @feynman/demo",
     "dev": "npm run dev -w @feynman/demo",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "npm run build -w @feynman/core && npm run build -w @feynman/react && tsc -p tsconfig.typecheck.json --noEmit",
+    "typecheck": "npm run build -w @feynman/core && npm run build -w @feynman/react && npm run build -w @feynman/editor && tsc -p tsconfig.typecheck.json --noEmit",
     "check": "npm run lint && npm run test && npm run build && npm run typecheck"
   },
   "devDependencies": {

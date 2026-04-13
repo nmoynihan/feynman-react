@@ -3,6 +3,8 @@
   "include": [
     "packages/feynman-core/src/**/*.ts",
     "packages/feynman-core/test/**/*.ts",
+    "packages/feynman-editor/src/**/*.ts",
+    "packages/feynman-editor/src/**/*.tsx",
     "packages/feynman-react/src/**/*.ts",
     "packages/feynman-react/src/**/*.tsx",
     "apps/demo/src/**/*.ts",
