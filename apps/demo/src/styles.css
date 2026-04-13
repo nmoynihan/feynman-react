@@ -221,6 +221,7 @@ select {
 
 .editor-frame {
   padding: 0;
+  height: 680px;
 }
 
 .editor-frame::after {

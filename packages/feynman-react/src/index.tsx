@@ -80,7 +80,7 @@ const DEFAULT_MATHJAX_OPTIONS: Required<Omit<MathJaxLabelRendererOptions, "conta
 };
 
 const DEFAULT_MATHJAX_CONFIG: NonNullable<ComponentProps<typeof MathJaxContext>["config"]> = {
-  loader: { load: ["input/tex", "output/svg"] },
+  // No loader: tex-svg.js bundles both input/tex and output/svg natively.
   tex: {
     inlineMath: [["\\(", "\\)"], ["$", "$"]],
     displayMath: [["\\[", "\\]"], ["$$", "$$"]]
@@ -166,7 +166,10 @@ function estimateMathBox(label: SceneLabel, options?: MathJaxLabelRendererOption
 
 export function FeynmanMathJaxProvider({ children, config }: FeynmanMathJaxProviderProps) {
   return (
-    <MathJaxContext config={{ ...DEFAULT_MATHJAX_CONFIG, ...config }}>
+    <MathJaxContext
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"
+      config={{ ...DEFAULT_MATHJAX_CONFIG, ...config }}
+    >
       {children}
     </MathJaxContext>
   );

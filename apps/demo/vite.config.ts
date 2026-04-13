@@ -7,7 +7,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@feynman/core": resolve(import.meta.dirname, "../../packages/feynman-core/src/index.ts"),
-      "@feynman/react": resolve(import.meta.dirname, "../../packages/feynman-react/src/index.tsx")
+      "@feynman/react": resolve(import.meta.dirname, "../../packages/feynman-react/src/index.tsx"),
+      "@feynman/editor": resolve(import.meta.dirname, "../../packages/feynman-editor/src/index.tsx")
     }
   }
 });
