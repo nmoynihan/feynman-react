@@ -13,6 +13,12 @@ export type CurveType = "line" | "arc" | "quadratic";
 export type ArrowDirection = "forward" | "backward" | "none";
 export type LabelSide = "left" | "right";
 
+/** Fill style for shapes. */
+export type ShapeFillStyle = "solid" | "outline" | "dashed" | "hatch";
+
+/** Supported shape primitives. */
+export type ShapeKind = "circle" | "ellipse";
+
 export interface Point {
   x: number;
   y: number;
@@ -56,11 +62,49 @@ export interface LabelStyle extends Partial<DiagramStyle> {
   color?: string;
 }
 
+/** Style options for diagram shapes (circle / ellipse). */
+export interface ShapeStyle {
+  /** How the interior is filled. Defaults to "solid". */
+  fillStyle?: ShapeFillStyle;
+  /** Fill colour (CSS colour string). Defaults to the diagram colour. */
+  fill?: string;
+  /** Stroke colour. Defaults to the diagram colour. */
+  stroke?: string;
+  /** Stroke width in diagram units. Defaults to the diagram strokeWidth. */
+  strokeWidth?: number;
+  /** Overall opacity 0-1. */
+  opacity?: number;
+  /** Hatch line angle in degrees (used when fillStyle === "hatch"). Default 45. */
+  hatchAngle?: number;
+  /** Spacing between hatch lines in diagram units (used when fillStyle === "hatch"). Default 8. */
+  hatchSpacing?: number;
+}
+
+/** A shape item stored in a diagram's canonical JSON. */
+export interface DiagramShape {
+  id: string;
+  kind: ShapeKind;
+  /** Centre x in diagram units. */
+  x: number;
+  /** Centre y in diagram units. */
+  y: number;
+  /** Horizontal radius (and the only radius for a circle). */
+  rx: number;
+  /** Vertical radius (for ellipses; defaults to rx). */
+  ry?: number;
+  style?: ShapeStyle;
+}
+
 export interface Vertex {
   id: string;
   x: number;
   y: number;
   kind?: VertexKind;
+  /**
+   * Radius of the vertex glyph in diagram units.
+   * Overrides the diagram-level vertexRadius / blobRadius when set.
+   */
+  size?: number;
   label?: string;
   labelOffset?: Point;
   style?: VertexStyle;
@@ -94,6 +138,8 @@ export interface Diagram {
   vertices: Vertex[];
   edges: Edge[];
   labels?: Label[];
+  /** Freeform shapes (circles, ellipses) placed on the canvas. */
+  shapes?: DiagramShape[];
   style?: DiagramStyle;
   viewBox?: ViewBox;
 }
@@ -118,10 +164,18 @@ export interface NormalizedLabel extends Label {
   style: LabelStyle;
 }
 
+/** Shape with all optional fields resolved to concrete values. */
+export interface NormalizedShape extends DiagramShape {
+  /** Vertical radius always present after normalization (= rx for circles). */
+  ry: number;
+  style: Required<ShapeStyle>;
+}
+
 export interface NormalizedDiagram {
   vertices: NormalizedVertex[];
   edges: NormalizedEdge[];
   labels: NormalizedLabel[];
+  shapes: NormalizedShape[];
   style: Required<DiagramStyle>;
   viewBox: ViewBox;
   vertexMap: Map<string, NormalizedVertex>;
@@ -167,6 +221,34 @@ export interface SceneVertexGlyph {
   crossSize: number;
 }
 
+/** A hatch pattern definition to be emitted into SVG <defs>. */
+export interface SceneHatchPattern {
+  /** Unique id used in fill="url(#id)" references. */
+  id: string;
+  angle: number;
+  spacing: number;
+  stroke: string;
+  strokeWidth: number;
+}
+
+/** A resolved shape ready to be rendered as SVG. */
+export interface SceneShape {
+  id: string;
+  kind: ShapeKind;
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  strokeDasharray?: string;
+  fillStyle: ShapeFillStyle;
+  /** Reference to a hatch pattern id in SvgScene.defs.hatchPatterns (only when fillStyle==="hatch"). */
+  hatchPatternId?: string;
+  opacity?: number;
+}
+
 export interface EdgeGeometry {
   id: string;
   paths: ScenePath[];
@@ -179,8 +261,10 @@ export interface SvgScene {
   paths: ScenePath[];
   vertices: SceneVertexGlyph[];
   labels: SceneLabel[];
+  shapes: SceneShape[];
   defs: {
     arrowMarkerId: string;
+    hatchPatterns: SceneHatchPattern[];
   };
 }
 

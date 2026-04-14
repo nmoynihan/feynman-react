@@ -5,10 +5,13 @@ import type {
   EdgeGeometry,
   NormalizedDiagram,
   NormalizedEdge,
+  NormalizedShape,
   NormalizedVertex,
   Point,
+  SceneHatchPattern,
   SceneLabel,
   ScenePath,
+  SceneShape,
   SceneVertexGlyph,
   SvgScene,
   ViewBox
@@ -30,6 +33,11 @@ function resolveStrokeWidth(edge: NormalizedEdge, diagram: NormalizedDiagram): n
 }
 
 function resolveVertexRadius(vertex: NormalizedVertex, diagram: NormalizedDiagram): number {
+  // Explicit per-vertex size takes top priority
+  if (vertex.size !== undefined) {
+    return vertex.size;
+  }
+
   if (vertex.kind === "blob") {
     return vertex.style.blobRadius ?? diagram.style.blobRadius;
   }
@@ -369,6 +377,12 @@ function computeAutoViewBox(diagram: Diagram, normalized: NormalizedDiagram, opt
     points.push({ x: label.x, y: label.y });
   }
 
+  // Include shape bounding boxes
+  for (const shape of normalized.shapes) {
+    points.push({ x: shape.x - shape.rx, y: shape.y - shape.ry });
+    points.push({ x: shape.x + shape.rx, y: shape.y + shape.ry });
+  }
+
   for (const edge of normalized.edges) {
     const fromVertex = normalized.vertexMap.get(edge.from);
     const toVertex = normalized.vertexMap.get(edge.to);
@@ -456,6 +470,7 @@ export function computeEdgeGeometry(
     vertices: [],
     edges: [],
     labels: [],
+    shapes: [],
     viewBox: { x: 0, y: 0, width: 0, height: 0 }
   } as NormalizedDiagram;
   const startInset = trimInset(fromVertex, normalizedDiagram);
@@ -582,6 +597,61 @@ function buildVertexLabel(vertex: NormalizedVertex, diagram: NormalizedDiagram):
   };
 }
 
+/** Build a SceneShape (and optional hatch pattern) from a normalized shape. */
+function buildSceneShape(
+  shape: NormalizedShape,
+  diagramColor: string,
+  diagramStrokeWidth: number,
+  hatchPatterns: SceneHatchPattern[]
+): SceneShape {
+  const s = shape.style;
+  const stroke = s.stroke || diagramColor;
+  const sw = s.strokeWidth || diagramStrokeWidth;
+  const fillStyle = s.fillStyle;
+
+  let fill = "none";
+  let strokeDasharray: string | undefined;
+  let hatchPatternId: string | undefined;
+
+  if (fillStyle === "solid") {
+    fill = s.fill || diagramColor;
+  } else if (fillStyle === "outline") {
+    fill = "none";
+  } else if (fillStyle === "dashed") {
+    fill = "none";
+    strokeDasharray = `${sw * 4} ${sw * 3}`;
+  } else if (fillStyle === "hatch") {
+    // Build a unique hatch pattern for this shape's parameters
+    hatchPatternId = `hatch-${shape.id}`;
+    hatchPatterns.push({
+      id: hatchPatternId,
+      angle: s.hatchAngle,
+      spacing: s.hatchSpacing,
+      stroke: s.stroke || diagramColor,
+      strokeWidth: Math.max(0.8, sw * 0.5)
+    });
+    fill = `url(#${hatchPatternId})`;
+    // also draw border
+  }
+
+  const result: SceneShape = {
+    id: shape.id,
+    kind: shape.kind,
+    x: shape.x,
+    y: shape.y,
+    rx: shape.rx,
+    ry: shape.ry,
+    fill,
+    stroke,
+    strokeWidth: sw,
+    fillStyle
+  };
+  if (strokeDasharray !== undefined) result.strokeDasharray = strokeDasharray;
+  if (hatchPatternId !== undefined) result.hatchPatternId = hatchPatternId;
+  if (s.opacity !== 1) result.opacity = s.opacity;
+  return result;
+}
+
 /**
  * Build a full SVG scene graph from a diagram description.
  */
@@ -621,14 +691,22 @@ export function buildSvgScene(diagram: Diagram, options: BuildSvgSceneOptions = 
     }))
   );
 
+  // Build shapes
+  const hatchPatterns: SceneHatchPattern[] = [];
+  const shapes: SceneShape[] = normalized.shapes.map((shape) =>
+    buildSceneShape(shape, normalized.style.color, normalized.style.strokeWidth, hatchPatterns)
+  );
+
   return {
     viewBox: computeAutoViewBox(diagram, normalized, resolvedOptions),
     style: normalized.style,
     paths,
     vertices,
     labels,
+    shapes,
     defs: {
-      arrowMarkerId: "feynman-arrow"
+      arrowMarkerId: "feynman-arrow",
+      hatchPatterns
     }
   };
 }

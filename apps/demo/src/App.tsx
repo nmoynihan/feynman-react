@@ -124,6 +124,21 @@ export function App() {
 
           <div className={error ? "status error" : "status"}>{error ?? "Valid diagram JSON"}</div>
         </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <h2>New features</h2>
+            <span>v2</span>
+          </div>
+          <ul style={{ margin: 0, padding: "0 0 0 18px", lineHeight: 1.8, fontSize: 13 }}>
+            <li><strong>Shapes</strong> – click <em>Add shape</em> in the toolbar to place circles and ellipses. Supports solid, outline, dashed and hatch fills.</li>
+            <li><strong>Vertex size</strong> – select a vertex in the inspector and edit <em>glyph radius</em> to override the default size.</li>
+            <li><strong>Snap on by default</strong> – grid snap is now enabled when the editor loads.</li>
+            <li><strong>TikZ export</strong> – click <em>Export TikZ</em> to copy a tikz-feynman LaTeX snippet.</li>
+            <li><strong>TikZ import</strong> – click <em>Import TikZ</em> and paste a tikz-feynman snippet to load it.</li>
+            <li><strong>Pointer fix</strong> – drag-to-select, vertex placement and dragging are now correctly aligned with the actual mouse position.</li>
+          </ul>
+        </section>
       </aside>
 
       <main className="stage">
@@ -136,8 +151,8 @@ export function App() {
             <div className="badge-row">
               <span className="badge">Controlled component</span>
               <span className="badge">Canonical JSON</span>
-              <span className="badge">Drag and drop</span>
-              <span className="badge">Embeddable</span>
+              <span className="badge">Shapes</span>
+              <span className="badge">TikZ I/O</span>
             </div>
           </div>
 
@@ -157,16 +172,16 @@ export function App() {
 
         <section className="notes-grid">
           <article className="note-card">
-            <h3>Standalone package</h3>
-            <p>The editor lives in its own workspace package and depends only on the existing core and React renderer packages.</p>
+            <h3>Shapes</h3>
+            <p>Circles and ellipses are first-class diagram items with solid, outline, dashed, and hatch fill styles, configurable stroke and fill colours.</p>
           </article>
           <article className="note-card">
-            <h3>Controlled editing</h3>
-            <p>Dragging vertices, labels, and inspector edits all emit the same canonical Diagram JSON model the rest of the repo already understands.</p>
+            <h3>TikZ-Feynman I/O</h3>
+            <p>Export any diagram to a tikz-feynman LaTeX snippet, or import a tikz-feynman snippet to load it into the visual editor. Vertex kinds, edge styles, bends, labels and shapes are all round-tripped.</p>
           </article>
           <article className="note-card">
-            <h3>Extension path</h3>
-            <p>The editor reuses the current SVG renderer, so future embedding into other React apps can stay package-level rather than slide-editor-specific.</p>
+            <h3>Pointer & snap</h3>
+            <p>Coordinate mapping now correctly handles the SVG <code>xMidYMid&nbsp;meet</code> transform — drag, place, and select all land exactly where you click. Grid snap is on by default.</p>
           </article>
         </section>
       </main>
