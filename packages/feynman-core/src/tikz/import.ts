@@ -171,15 +171,27 @@ function parseOptions(raw: string): ParsedOptions {
 // Vertex parsing
 // ---------------------------------------------------------------------------
 
+/** Default separation for relative placement (≈1.5 cm in diagram units). */
+const DEFAULT_SEP = 90;
+
+interface VertexEntry {
+  /** Node id in TikZ */
+  id: string;
+  opts: ParsedOptions;
+  /** Absolute coordinates (cm * SCALE), if `at (x,y)` was present. */
+  absCoord: { x: number; y: number } | null;
+  /** Inline label text (from `{...}` after the node name). */
+  inlineLabel: string | null;
+}
+
 /**
- * Parse a \\vertex line.
- * Variants:
- *   \\vertex (id) at (x, y);
- *   \\vertex [options] (id) at (x, y);
+ * Parse a \\vertex statement into a VertexEntry.
+ * Handles both:
+ *   \\vertex [opts] (id) at (x, y) {label};
+ *   \\vertex [opts] (id) {label};   ← relative or unlabelled placement
  */
-function parseVertex(line: string, takenIds: Set<string>): Vertex | null {
-  // Strip leading \vertex
-  let rest = line.replace(/^\\vertex\s*/, "");
+function parseVertexEntry(stmt: string): VertexEntry | null {
+  let rest = stmt.replace(/^\\vertex\s*/, "");
 
   // Optional options block [...]
   let opts: ParsedOptions = { styles: [], kvs: {} };
@@ -190,50 +202,121 @@ function parseVertex(line: string, takenIds: Set<string>): Vertex | null {
     rest = rest.slice(br.end).trim();
   }
 
-  // Node name (id)
+  // Node name
   if (!rest.startsWith("(")) return null;
   const idParen = extractParenContent(rest, 0);
   if (!idParen) return null;
-  const id = idParen.content.trim() || nextId("v", takenIds);
-  takenIds.add(id);
+  const id = idParen.content.trim();
+  if (!id) return null;
   rest = rest.slice(idParen.end).trim();
 
-  // "at"
-  if (!rest.startsWith("at")) return null;
-  rest = rest.slice(2).trim();
+  // Optional inline label {text}
+  let inlineLabel: string | null = null;
+  if (rest.startsWith("{")) {
+    const brace = extractBraceContent(rest, 0);
+    if (brace) {
+      inlineLabel = brace.content.trim() || null;
+      rest = rest.slice(brace.end).trim();
+    }
+  }
 
-  // Coordinate
-  if (!rest.startsWith("(")) return null;
-  const coordParen = extractParenContent(rest, 0);
-  if (!coordParen) return null;
-  const coordStr = coordParen.content;
-  const coordParts = coordStr.split(",");
-  if (coordParts.length < 2) return null;
-  const x = parseNum(coordParts[0]!.trim()) * SCALE;
-  // TikZ y is up, diagram y is down → flip
-  const y = -parseNum(coordParts[1]!.trim()) * SCALE;
+  // Optional "at (x, y)"
+  let absCoord: { x: number; y: number } | null = null;
+  if (rest.startsWith("at")) {
+    rest = rest.slice(2).trim();
+    if (rest.startsWith("(")) {
+      const coordParen = extractParenContent(rest, 0);
+      if (coordParen) {
+        const parts = coordParen.content.split(",");
+        if (parts.length >= 2) {
+          absCoord = {
+            x: parseNum(parts[0]!.trim()) * SCALE,
+            y: -parseNum(parts[1]!.trim()) * SCALE
+          };
+        }
+      }
+    }
+  }
 
-  // Determine vertex kind
+  return { id, opts, absCoord, inlineLabel };
+}
+
+/**
+ * Resolve all vertex positions given a list of VertexEntry objects.
+ * Vertices with `at (x,y)` are placed first; relative placements
+ * (`[right=of a]`, `[above right=of b]`, etc.) are resolved iteratively.
+ */
+function resolvePositions(entries: VertexEntry[]): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+
+  // Absolute placements
+  for (const e of entries) {
+    if (e.absCoord) positions.set(e.id, e.absCoord);
+  }
+
+  // Relative placements: iterate until no more can be resolved
+  const relDirections: Record<string, { dx: number; dy: number }> = {
+    right:         { dx:  1,      dy:  0      },
+    left:          { dx: -1,      dy:  0      },
+    above:         { dx:  0,      dy: -1      },
+    below:         { dx:  0,      dy:  1      },
+    "above right": { dx:  0.707,  dy: -0.707  },
+    "below right": { dx:  0.707,  dy:  0.707  },
+    "above left":  { dx: -0.707,  dy: -0.707  },
+    "below left":  { dx: -0.707,  dy:  0.707  }
+  };
+
+  for (let pass = 0; pass < entries.length; pass++) {
+    let resolved = 0;
+    for (const e of entries) {
+      if (positions.has(e.id)) continue;
+      for (const [dirKey, delta] of Object.entries(relDirections)) {
+        const val = e.opts.kvs[dirKey];
+        if (!val) continue;
+        // Expect "of <refId>" — optionally with a distance like "2cm of a"
+        const match = val.match(/(?:\S+\s+)?of\s+(\S+)/);
+        if (!match) continue;
+        const refId = match[1]!;
+        const refPos = positions.get(refId);
+        if (!refPos) continue;
+        positions.set(e.id, {
+          x: refPos.x + delta.dx * DEFAULT_SEP,
+          y: refPos.y + delta.dy * DEFAULT_SEP
+        });
+        resolved++;
+        break;
+      }
+    }
+    if (resolved === 0) break;
+  }
+
+  return positions;
+}
+
+/**
+ * Convert a VertexEntry + resolved position into a Diagram Vertex.
+ */
+function entryToVertex(entry: VertexEntry, pos: { x: number; y: number }): Vertex {
+  const { id, opts, inlineLabel } = entry;
+
   let kind: VertexKind = "none";
   if (opts.styles.includes("dot")) kind = "dot";
   else if (opts.styles.includes("blob")) kind = "blob";
   else if (opts.styles.includes("crossed dot") || opts.styles.includes("cross")) kind = "cross";
 
-  // Size (minimum size=Xcm → radius in diagram units)
   let size: number | undefined;
   const minSize = opts.kvs["minimum size"];
   if (minSize !== undefined) {
-    size = parseNum(minSize) * SCALE / 2; // diameter → radius
+    size = parseNum(minSize) * SCALE / 2;
   }
 
-  // Label
-  const labelRaw = opts.kvs["label"];
-  const label = labelRaw ? wrapMath(labelRaw.replace(/^\$|\$$/g, "")) : undefined;
+  // Label from options or inline braces
+  const labelRaw = opts.kvs["label"] ?? (inlineLabel ?? undefined);
+  const label = labelRaw ? wrapMath(labelRaw.replace(/^\$|\$$/g, "").trim()) : undefined;
 
-  const vertex: Vertex = { id, x, y, kind };
+  const vertex: Vertex = { id, x: pos.x, y: pos.y, kind };
   if (label) vertex.label = label;
   if (size !== undefined) vertex.size = size;
-
   return vertex;
 }
 
@@ -249,6 +332,7 @@ const STYLE_MAP: Record<string, EdgeType> = {
   scalar: "scalar",
   ghost: "ghost",
   photon: "photon",
+  boson: "photon",       // tikz-feynman alias for photon
   gluon: "gluon",
   graviton: "graviton",
   // common aliases
@@ -492,16 +576,28 @@ export function importFromTikz(source: string): ImportResult {
   }
 
   if (feynmanBlock !== null) {
-    // --- Parse vertices ---
-    const vertexRe = /\\vertex\s*(?:\[[^\]]*\]\s*)?\([^)]+\)\s*at\s*\([^)]+\)/g;
+    // --- Parse vertices (two-pass: collect entries, then resolve relative positions) ---
+    // Match any \vertex statement (with or without `at (x,y)`), terminated by `;`
+    const vertexRe = /\\vertex\b[^;]*/g;
     let m: RegExpExecArray | null;
+    const vertexEntries: VertexEntry[] = [];
 
     while ((m = vertexRe.exec(feynmanBlock)) !== null) {
-      const v = parseVertex(m[0], takenVertexIds);
-      if (v) {
-        vertices.push(v);
+      const entry = parseVertexEntry(m[0]);
+      if (entry && !takenVertexIds.has(entry.id)) {
+        takenVertexIds.add(entry.id);
+        vertexEntries.push(entry);
+      }
+    }
+
+    const positions = resolvePositions(vertexEntries);
+
+    for (const entry of vertexEntries) {
+      const pos = positions.get(entry.id);
+      if (pos) {
+        vertices.push(entryToVertex(entry, pos));
       } else {
-        warnings.push(`Could not parse vertex: ${m[0].slice(0, 60)}`);
+        warnings.push(`Could not resolve position for vertex (${entry.id}); skipped.`);
       }
     }
 

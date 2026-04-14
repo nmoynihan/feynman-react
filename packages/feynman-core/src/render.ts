@@ -50,8 +50,14 @@ function trimInset(vertex: NormalizedVertex, diagram: NormalizedDiagram): number
     return 0;
   }
 
+  if (vertex.kind === "hook") {
+    return 0;
+  }
+
   if (vertex.kind === "cross") {
-    return (vertex.style.crossSize ?? diagram.style.crossSize) * 0.8;
+    // vertex.size overrides crossSize for the cross glyph as well
+    const crossSz = vertex.size !== undefined ? vertex.size : (vertex.style.crossSize ?? diagram.style.crossSize);
+    return crossSz * 0.8;
   }
 
   return resolveVertexRadius(vertex, diagram) + diagram.style.strokeWidth * 0.6;
@@ -554,25 +560,94 @@ export function computeEdgeGeometry(
   };
 }
 
-function buildVertexGlyph(vertex: NormalizedVertex, diagram: NormalizedDiagram): SceneVertexGlyph | null {
+function buildVertexGlyph(
+  vertex: NormalizedVertex,
+  diagram: NormalizedDiagram,
+  hatchPatterns: SceneHatchPattern[]
+): SceneVertexGlyph | null {
   if (vertex.kind === "none") {
     return null;
   }
 
   const stroke = vertex.style.stroke ?? diagram.style.color;
-  const fill = vertex.style.fill ?? (vertex.kind === "cross" ? "none" : diagram.style.color);
+  const strokeWidth = vertex.style.strokeWidth ?? diagram.style.strokeWidth;
+  const radius = resolveVertexRadius(vertex, diagram);
+  // vertex.size also overrides crossSize for cross vertices
+  const crossSize = vertex.size !== undefined ? vertex.size : (vertex.style.crossSize ?? diagram.style.crossSize);
 
-  return {
+  if (vertex.kind === "hook") {
+    return {
+      id: vertex.id,
+      kind: "hook",
+      x: vertex.x,
+      y: vertex.y,
+      radius,
+      stroke,
+      strokeWidth,
+      fill: "none",
+      crossSize
+    };
+  }
+
+  if (vertex.kind === "blob") {
+    const fillStyle = vertex.style.fillStyle ?? "solid";
+    let fill = "none";
+    let hatchPatternId: string | undefined;
+    let backgroundFill: string | undefined;
+
+    if (fillStyle === "solid") {
+      fill = vertex.style.fill ?? diagram.style.color;
+    } else if (fillStyle === "outline") {
+      fill = "none";
+    } else if (fillStyle === "dashed") {
+      fill = "none";
+    } else if (fillStyle === "hatch") {
+      hatchPatternId = `hatch-blob-${vertex.id}`;
+      hatchPatterns.push({
+        id: hatchPatternId,
+        angle: 45,
+        spacing: 8,
+        stroke: stroke,
+        strokeWidth: Math.max(0.8, strokeWidth * 0.5)
+      });
+      fill = `url(#${hatchPatternId})`;
+      if (vertex.style.backgroundFill) {
+        backgroundFill = vertex.style.backgroundFill;
+      }
+    }
+
+    const glyph: SceneVertexGlyph = {
+      id: vertex.id,
+      kind: "blob",
+      x: vertex.x,
+      y: vertex.y,
+      radius,
+      stroke,
+      strokeWidth,
+      fill,
+      crossSize,
+      fillStyle
+    };
+    if (hatchPatternId !== undefined) glyph.hatchPatternId = hatchPatternId;
+    if (backgroundFill !== undefined) glyph.backgroundFill = backgroundFill;
+    if (vertex.layer !== undefined) glyph.layer = vertex.layer;
+    return glyph;
+  }
+
+  const fill = vertex.style.fill ?? (vertex.kind === "cross" ? "none" : diagram.style.color);
+  const glyph: SceneVertexGlyph = {
     id: vertex.id,
     kind: vertex.kind,
     x: vertex.x,
     y: vertex.y,
-    radius: resolveVertexRadius(vertex, diagram),
+    radius,
     stroke,
-    strokeWidth: vertex.style.strokeWidth ?? diagram.style.strokeWidth,
+    strokeWidth,
     fill,
-    crossSize: vertex.style.crossSize ?? diagram.style.crossSize
+    crossSize
   };
+  if (vertex.layer !== undefined) glyph.layer = vertex.layer;
+  return glyph;
 }
 
 function buildVertexLabel(vertex: NormalizedVertex, diagram: NormalizedDiagram): SceneLabel | null {
@@ -649,6 +724,8 @@ function buildSceneShape(
   if (strokeDasharray !== undefined) result.strokeDasharray = strokeDasharray;
   if (hatchPatternId !== undefined) result.hatchPatternId = hatchPatternId;
   if (s.opacity !== 1) result.opacity = s.opacity;
+  if (s.backgroundFill) result.backgroundFill = s.backgroundFill;
+  if (shape.layer !== undefined) result.layer = shape.layer;
   return result;
 }
 
@@ -666,10 +743,6 @@ export function buildSvgScene(diagram: Diagram, options: BuildSvgSceneOptions = 
     paths.push(...geometry.paths);
     labels.push(...geometry.labels);
   }
-
-  const vertices = normalized.vertices
-    .map((vertex) => buildVertexGlyph(vertex, normalized))
-    .filter((vertex): vertex is SceneVertexGlyph => vertex !== null);
 
   labels.push(
     ...normalized.vertices
@@ -691,11 +764,15 @@ export function buildSvgScene(diagram: Diagram, options: BuildSvgSceneOptions = 
     }))
   );
 
-  // Build shapes
+  // Build shapes and hatch patterns (shapes first so blob vertex IDs don't collide)
   const hatchPatterns: SceneHatchPattern[] = [];
   const shapes: SceneShape[] = normalized.shapes.map((shape) =>
     buildSceneShape(shape, normalized.style.color, normalized.style.strokeWidth, hatchPatterns)
   );
+
+  const vertices = normalized.vertices
+    .map((vertex) => buildVertexGlyph(vertex, normalized, hatchPatterns))
+    .filter((vertex): vertex is SceneVertexGlyph => vertex !== null);
 
   return {
     viewBox: computeAutoViewBox(diagram, normalized, resolvedOptions),

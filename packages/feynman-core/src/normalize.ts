@@ -31,12 +31,13 @@ export const DEFAULT_STYLE: Required<DiagramStyle> = {
 
 const DEFAULT_SHAPE_STYLE: Required<ShapeStyle> = {
   fillStyle: "solid",
-  fill: "",          // empty = use diagram color
-  stroke: "",        // empty = use diagram color
-  strokeWidth: 0,    // 0 = use diagram strokeWidth
+  fill: "",           // empty = use diagram color
+  stroke: "",         // empty = use diagram color
+  strokeWidth: 0,     // 0 = use diagram strokeWidth
   opacity: 1,
   hatchAngle: 45,
-  hatchSpacing: 8
+  hatchSpacing: 8,
+  backgroundFill: ""  // empty = no background
 };
 
 function computeViewBox(diagram: Diagram): ViewBox {
@@ -118,7 +119,8 @@ function normalizeShape(shape: DiagramShape): NormalizedShape {
       strokeWidth: s.strokeWidth ?? DEFAULT_SHAPE_STYLE.strokeWidth,
       opacity: s.opacity ?? DEFAULT_SHAPE_STYLE.opacity,
       hatchAngle: s.hatchAngle ?? DEFAULT_SHAPE_STYLE.hatchAngle,
-      hatchSpacing: s.hatchSpacing ?? DEFAULT_SHAPE_STYLE.hatchSpacing
+      hatchSpacing: s.hatchSpacing ?? DEFAULT_SHAPE_STYLE.hatchSpacing,
+      backgroundFill: s.backgroundFill ?? DEFAULT_SHAPE_STYLE.backgroundFill
     }
   };
 }

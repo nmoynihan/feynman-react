@@ -43,7 +43,7 @@ export type {
 } from "@feynman/core";
 export type { LabelRenderContext } from "@feynman/react";
 
-type EditorMode = "select" | "add-vertex" | "add-edge" | "add-label" | "add-shape";
+type EditorMode = "select";
 type Selection =
   | { kind: "vertex"; id: string }
   | { kind: "edge"; id: string }
@@ -59,7 +59,7 @@ type MarqueeState = { pointerId: number; start: Point; current: Point } | null;
 type TikzPanelMode = "import" | "export" | null;
 
 const EDGE_TYPE_OPTIONS: EdgeType[] = ["plain", "fermion", "antiFermion", "scalar", "ghost", "photon", "gluon", "graviton"];
-const VERTEX_KIND_OPTIONS: VertexKind[] = ["none", "dot", "blob", "cross"];
+const VERTEX_KIND_OPTIONS: VertexKind[] = ["none", "dot", "blob", "cross", "hook"];
 const SHAPE_KIND_OPTIONS: ShapeKind[] = ["circle", "ellipse"];
 const SHAPE_FILL_OPTIONS: ShapeFillStyle[] = ["solid", "outline", "dashed", "hatch"];
 const CURVE_OPTIONS: CurveType[] = ["line", "arc", "quadratic"];
@@ -606,17 +606,15 @@ export function FeynmanDiagramEditor({
   const [undoCount, setUndoCount] = useState(0);
   const [redoCount, setRedoCount] = useState(0);
 
-  const [mode, setMode] = useState<EditorMode>("select");
+  const [mode] = useState<EditorMode>("select");
   const [selection, setSelection] = useState<Selection>(null);
   const [dragState, setDragState] = useState<DragState>(null);
-  const [edgeSourceId, setEdgeSourceId] = useState<string | null>(null);
-  const [edgeDraftPoint, setEdgeDraftPoint] = useState<Point | null>(null);
   const [newVertexKind, setNewVertexKind] = useState<VertexKind>("dot");
   const [newEdgeType, setNewEdgeType] = useState<EdgeType>("fermion");
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [cursorPoint, setCursorPoint] = useState<Point | null>(null);
   const [extraSelectedIds, setExtraSelectedIds] = useState<Set<string>>(new Set());
-  const [snapTargetVertexId, setSnapTargetVertexId] = useState<string | null>(null);
+  const [hookSnapTargetId, setHookSnapTargetId] = useState<string | null>(null);
   const [marqueeState, setMarqueeState] = useState<MarqueeState>(null);
   const [newShapeKind, setNewShapeKind] = useState<ShapeKind>("circle");
   const [tikzPanel, setTikzPanel] = useState<TikzPanelMode>(null);
@@ -698,15 +696,6 @@ export function FeynmanDiagramEditor({
     }
   }, [selection, value.edges, value.labels, value.vertices]);
 
-  // Clear edge drawing state when leaving add-edge mode
-  useEffect(() => {
-    if (mode !== "add-edge") {
-      setEdgeSourceId(null);
-      setEdgeDraftPoint(null);
-      setSnapTargetVertexId(null);
-    }
-  }, [mode]);
-
   // Drag handling via RAF
   useEffect(() => {
     if (!dragState) {
@@ -748,6 +737,19 @@ export function FeynmanDiagramEditor({
               y: applyCoord(extraStart.y, dy)
             }));
           }
+        }
+        // If dragging a hook vertex, check for snap-to-real-vertex
+        const draggedVertex = currentDiagram.vertices.find((v) => v.id === activeDrag.id);
+        if (draggedVertex?.kind === "hook" && overlayRef.current) {
+          const hookPos = {
+            x: applyCoord(activeDrag.start.x, dx),
+            y: applyCoord(activeDrag.start.y, dy)
+          };
+          const nonHookVertices = nextDiagram.vertices.filter((v) => v.id !== activeDrag.id && v.kind !== "hook");
+          const snapV = findNearestVertex(hookPos, nonHookVertices, latestViewportRef.current ?? viewport, overlayRef.current, activeDrag.id);
+          setHookSnapTargetId(snapV?.id ?? null);
+        } else {
+          setHookSnapTargetId(null);
         }
         latestOnChangeRef.current(nextDiagram);
         return;
@@ -799,6 +801,35 @@ export function FeynmanDiagramEditor({
         flushDrag();
       }
 
+      // Hook vertex merge: if dragging a hook onto a real (non-hook) vertex, merge them
+      if (activeDrag.kind === "vertex" && overlayRef.current) {
+        const currentDiagram = latestDiagramRef.current;
+        const draggedV = currentDiagram.vertices.find((v) => v.id === activeDrag.id);
+        if (draggedV?.kind === "hook") {
+          const nonHookVertices = currentDiagram.vertices.filter((v) => v.id !== activeDrag.id && v.kind !== "hook");
+          const nearV = findNearestVertex(draggedV, nonHookVertices, latestViewportRef.current ?? viewport, overlayRef.current, activeDrag.id);
+          if (nearV) {
+            const hookId = activeDrag.id;
+            const targetId = nearV.id;
+            const merged: typeof currentDiagram = {
+              ...currentDiagram,
+              vertices: currentDiagram.vertices.filter((v) => v.id !== hookId),
+              edges: currentDiagram.edges.map((e) => ({
+                ...e,
+                from: e.from === hookId ? targetId : e.from,
+                to: e.to === hookId ? targetId : e.to
+              }))
+            };
+            latestOnChangeRef.current(merged);
+            setHookSnapTargetId(null);
+            pendingDragPointRef.current = null;
+            setDragState(null);
+            return;
+          }
+        }
+      }
+
+      setHookSnapTargetId(null);
       pendingDragPointRef.current = null;
       setDragState(null);
     }
@@ -967,15 +998,71 @@ export function FeynmanDiagramEditor({
     }
   }
 
-  function handleCenter() {
-    const cx = autoScene.viewBox.x + autoScene.viewBox.width / 2;
-    const cy = autoScene.viewBox.y + autoScene.viewBox.height / 2;
-    setViewport((current) => ({
-      x: cx - current.width / 2,
-      y: cy - current.height / 2,
-      width: current.width,
-      height: current.height
-    }));
+  function viewportCenter(): Point {
+    const vp = latestViewportRef.current ?? viewport;
+    return {
+      x: snapToGridRef.current ? snapCoordinate(vp.x + vp.width / 2) : roundCoordinate(vp.x + vp.width / 2),
+      y: snapToGridRef.current ? snapCoordinate(vp.y + vp.height / 2) : roundCoordinate(vp.y + vp.height / 2)
+    };
+  }
+
+  function handleAddVertex() {
+    const pt = viewportCenter();
+    const { diagram: nextDiagram, vertexId } = appendVertex(value, pt);
+    commit(nextDiagram);
+    setSelection({ kind: "vertex", id: vertexId });
+    setExtraSelectedIds(new Set());
+  }
+
+  function handleAddEdge() {
+    const pt = viewportCenter();
+    const offset = 50;
+    const id1 = createId(value.vertices.map((v) => v.id), "h");
+    const id2 = createId([...value.vertices.map((v) => v.id), id1], "h");
+    const edgeId = createId(value.edges.map((e) => e.id), "e");
+    const nextDiagram: Diagram = {
+      ...value,
+      vertices: [
+        ...value.vertices,
+        { id: id1, x: roundCoordinate(pt.x - offset), y: pt.y, kind: "hook" },
+        { id: id2, x: roundCoordinate(pt.x + offset), y: pt.y, kind: "hook" }
+      ],
+      edges: [
+        ...value.edges,
+        { id: edgeId, from: id1, to: id2, type: newEdgeType }
+      ]
+    };
+    commit(nextDiagram);
+    setSelection({ kind: "edge", id: edgeId });
+    setExtraSelectedIds(new Set());
+  }
+
+  function handleAddLabel() {
+    const pt = viewportCenter();
+    const labelId = createId((value.labels ?? []).map((l) => l.id), "label");
+    commit(
+      withOptionalLabels(value, [
+        ...(value.labels ?? []),
+        { id: labelId, x: pt.x, y: pt.y, text: "Label" }
+      ])
+    );
+    setSelection({ kind: "label", id: labelId });
+  }
+
+  function handleAddShape() {
+    const pt = viewportCenter();
+    const shapeId = createId((value.shapes ?? []).map((s) => s.id), "shape");
+    const newShape: DiagramShape = {
+      id: shapeId,
+      kind: newShapeKind,
+      x: pt.x,
+      y: pt.y,
+      rx: 30,
+      ...(newShapeKind === "ellipse" ? { ry: 20 } : {})
+    };
+    commit(withOptionalShapes(value, [...(value.shapes ?? []), newShape]));
+    setSelection({ kind: "shape", id: shapeId });
+    setExtraSelectedIds(new Set());
   }
 
   // --- TikZ import / export ---
@@ -1172,38 +1259,14 @@ export function FeynmanDiagramEditor({
     return ids;
   }, [extraSelectedIds, selection]);
 
-  const currentModeHint =
-    mode === "add-vertex"
-      ? `Click the canvas to place ${newVertexKind} vertices. [A]`
-      : mode === "add-label"
-        ? "Click the canvas to add standalone labels. [L]"
-        : mode === "add-shape"
-          ? `Click the canvas to place a ${newShapeKind}.`
-          : mode === "add-edge"
-            ? edgeSourceId
-              ? `Connect ${edgeSourceId} to another vertex to add a ${newEdgeType} edge.`
-              : `Pick a source vertex for the next ${newEdgeType} edge. [E]`
-            : selection
-              ? `Selected ${selection.kind} ${selection.id}. Drag handles or edit fields in the inspector.`
-              : "Select, drag, and inspect items. [V] Select  [A] Add vertex  [E] Add edge  [L] Add label";
+  const currentModeHint = selection
+    ? `Selected ${selection.kind} ${selection.id}. Drag or edit fields in the inspector. [Del] Delete`
+    : "Click to select. [A] Add vertex  [E] Add edge  [L] Add label  Shift+click for multi-select";
 
   function handleCanvasPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
     if (!overlayRef.current) return;
-
     const point = pointerToDiagramPoint(event.nativeEvent, overlayRef.current, viewport);
     setCursorPoint(point);
-
-    if (mode !== "add-edge" || !edgeSourceId) return;
-
-    // Snap to nearest vertex while drawing an edge
-    const snapVertex = findNearestVertex(point, value.vertices, viewport, overlayRef.current, edgeSourceId);
-    setSnapTargetVertexId(snapVertex?.id ?? null);
-
-    if (snapVertex) {
-      setEdgeDraftPoint({ x: snapVertex.x, y: snapVertex.y });
-    } else {
-      setEdgeDraftPoint(point);
-    }
   }
 
   function handleCanvasPointerDown(event: ReactPointerEvent<SVGSVGElement>) {
@@ -1217,95 +1280,12 @@ export function FeynmanDiagramEditor({
     setCursorPoint(null);
   }
 
-  function handleCanvasClick(event: ReactPointerEvent<SVGSVGElement>) {
+  function handleCanvasClick() {
     if (marqueeDidDragRef.current) {
       marqueeDidDragRef.current = false;
       return;
     }
-    if (!overlayRef.current) {
-      return;
-    }
-
-    const point = pointerToDiagramPoint(event.nativeEvent, overlayRef.current, viewport);
-
-    if (mode === "add-vertex") {
-      const { diagram: nextDiagram, vertexId } = appendVertex(value, point);
-      commit(nextDiagram);
-      setSelection({ kind: "vertex", id: vertexId });
-      setExtraSelectedIds(new Set());
-      return;
-    }
-
-    if (mode === "add-shape") {
-      const snap = snapToGrid;
-      const cx = snap ? snapCoordinate(point.x) : roundCoordinate(point.x);
-      const cy = snap ? snapCoordinate(point.y) : roundCoordinate(point.y);
-      const shapeId = createId((value.shapes ?? []).map((s) => s.id), "shape");
-      const newShape: DiagramShape = {
-        id: shapeId,
-        kind: newShapeKind,
-        x: cx,
-        y: cy,
-        rx: 30,
-        ...(newShapeKind === "ellipse" ? { ry: 20 } : {})
-      };
-      commit(withOptionalShapes(value, [...(value.shapes ?? []), newShape]));
-      setSelection({ kind: "shape", id: shapeId });
-      setExtraSelectedIds(new Set());
-      return;
-    }
-
-    if (mode === "add-label") {
-      const labelId = createId((value.labels ?? []).map((label) => label.id), "label");
-      commit(
-        withOptionalLabels(value, [
-          ...(value.labels ?? []),
-          {
-            id: labelId,
-            x: roundCoordinate(point.x),
-            y: roundCoordinate(point.y),
-            text: "Label"
-          }
-        ])
-      );
-      setSelection({ kind: "label", id: labelId });
-      return;
-    }
-
-    if (mode === "add-edge") {
-      if (!edgeSourceId) {
-        const { diagram: nextDiagram, vertexId } = appendVertex(value, point);
-        commit(nextDiagram);
-        setEdgeSourceId(vertexId);
-        setSelection({ kind: "vertex", id: vertexId });
-        setExtraSelectedIds(new Set());
-        return;
-      }
-
-      // If snapping to an existing vertex, use it; otherwise create a new one
-      const snapVertex = overlayRef.current
-        ? findNearestVertex(point, value.vertices, viewport, overlayRef.current, edgeSourceId)
-        : null;
-
-      if (snapVertex) {
-        const { diagram: nextDiagram, edgeId } = appendEdge(value, edgeSourceId, snapVertex.id);
-        commit(nextDiagram);
-        setSelection({ kind: "edge", id: edgeId });
-        setEdgeSourceId(null);
-        setEdgeDraftPoint(null);
-        setSnapTargetVertexId(null);
-      } else {
-        const withTarget = appendVertex(value, point);
-        const withEdge = appendEdge(withTarget.diagram, edgeSourceId, withTarget.vertexId);
-        commit(withEdge.diagram);
-        setSelection({ kind: "edge", id: withEdge.edgeId });
-        setEdgeSourceId(null);
-        setEdgeDraftPoint(null);
-        setSnapTargetVertexId(null);
-      }
-      return;
-    }
-
+    // Canvas click always deselects — items are added via toolbar buttons
     setSelection(null);
     setExtraSelectedIds(new Set());
   }
@@ -1346,30 +1326,7 @@ export function FeynmanDiagramEditor({
   }
 
   function handleVertexClick(event: { shiftKey: boolean }, vertex: Vertex) {
-    if (mode === "add-edge") {
-      if (!edgeSourceId) {
-        setEdgeSourceId(vertex.id);
-        setSelection({ kind: "vertex", id: vertex.id });
-        return;
-      }
-
-      if (edgeSourceId === vertex.id) {
-        setEdgeSourceId(null);
-        setEdgeDraftPoint(null);
-        setSnapTargetVertexId(null);
-        return;
-      }
-
-      const { diagram: nextDiagram, edgeId } = appendEdge(value, edgeSourceId, vertex.id);
-      commit(nextDiagram);
-      setEdgeSourceId(null);
-      setEdgeDraftPoint(null);
-      setSnapTargetVertexId(null);
-      setSelection({ kind: "edge", id: edgeId });
-      return;
-    }
-
-    if (mode === "select" && event.shiftKey) {
+    if (event.shiftKey) {
       // Shift+click: toggle this vertex into the extra selection
       setExtraSelectedIds((prev) => {
         const next = new Set(prev);
@@ -1380,7 +1337,6 @@ export function FeynmanDiagramEditor({
         }
         return next;
       });
-      // Keep the primary selection as the last non-shift-clicked vertex
       return;
     }
 
@@ -1461,10 +1417,6 @@ export function FeynmanDiagramEditor({
 
     if (event.key === "Escape") {
       setSelection(null);
-      setMode("select");
-      setEdgeSourceId(null);
-      setEdgeDraftPoint(null);
-      setSnapTargetVertexId(null);
       setExtraSelectedIds(new Set());
       return;
     }
@@ -1488,26 +1440,21 @@ export function FeynmanDiagramEditor({
       return;
     }
 
-    // Mode shortcuts (no modifier)
+    // Quick-add shortcuts (no modifier)
     if (!ctrl) {
-      if (event.key === "v" || event.key === "V") {
-        event.preventDefault();
-        setMode("select");
-        return;
-      }
       if (event.key === "a" || event.key === "A") {
         event.preventDefault();
-        setMode("add-vertex");
+        handleAddVertex();
         return;
       }
       if (event.key === "e" || event.key === "E") {
         event.preventDefault();
-        setMode("add-edge");
+        handleAddEdge();
         return;
       }
       if (event.key === "l" || event.key === "L") {
         event.preventDefault();
-        setMode("add-label");
+        handleAddLabel();
         return;
       }
     }
@@ -1537,41 +1484,33 @@ export function FeynmanDiagramEditor({
           <div style={TOOLBAR_STYLE}>
             <button
               type="button"
-              title="Select mode [V]"
-              style={mode === "select" ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
-              onClick={() => setMode("select")}
-            >
-              Select
-            </button>
-            <button
-              type="button"
-              title="Add vertex mode [A]"
-              style={mode === "add-vertex" ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
-              onClick={() => setMode("add-vertex")}
+              title="Add vertex at canvas centre [A]"
+              style={BUTTON_STYLE}
+              onClick={handleAddVertex}
             >
               Add vertex
             </button>
             <button
               type="button"
-              title="Add edge mode [E]"
-              style={mode === "add-edge" ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
-              onClick={() => setMode("add-edge")}
+              title="Add edge with hook endpoints at canvas centre [E]"
+              style={BUTTON_STYLE}
+              onClick={handleAddEdge}
             >
               Add edge
             </button>
             <button
               type="button"
-              title="Add label mode [L]"
-              style={mode === "add-label" ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
-              onClick={() => setMode("add-label")}
+              title="Add label at canvas centre [L]"
+              style={BUTTON_STYLE}
+              onClick={handleAddLabel}
             >
               Add label
             </button>
             <button
               type="button"
-              title="Add shape mode (circle/ellipse)"
-              style={mode === "add-shape" ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
-              onClick={() => setMode("add-shape")}
+              title="Add shape at canvas centre"
+              style={BUTTON_STYLE}
+              onClick={handleAddShape}
             >
               Add shape
             </button>
@@ -1579,7 +1518,7 @@ export function FeynmanDiagramEditor({
               value={newShapeKind}
               onChange={(e) => setNewShapeKind(e.target.value as ShapeKind)}
               style={{ ...INPUT_STYLE, width: 80, height: 32 }}
-              title="Shape kind to place"
+              title="Shape kind for Add shape"
             >
               {SHAPE_KIND_OPTIONS.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
@@ -1633,14 +1572,6 @@ export function FeynmanDiagramEditor({
             </button>
             <button
               type="button"
-              title="Centre the diagram in the current view without changing zoom"
-              style={BUTTON_STYLE}
-              onClick={handleCenter}
-            >
-              Centre
-            </button>
-            <button
-              type="button"
               title="Snap vertex positions to the nearest 10-unit grid"
               style={snapToGrid ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
               onClick={() => setSnapToGrid((s) => !s)}
@@ -1691,7 +1622,7 @@ export function FeynmanDiagramEditor({
                 letterSpacing: "0.01em"
               }}
             >
-              Click "Add vertex" (or press A) to get started
+              Press A to add a vertex, E to add an edge, or use the toolbar buttons
             </div>
           ) : null}
 
@@ -1710,7 +1641,7 @@ export function FeynmanDiagramEditor({
             ref={overlayRef}
             viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
             preserveAspectRatio="xMidYMid meet"
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", cursor: mode === "select" ? "default" : "crosshair" }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", cursor: "default" }}
             onPointerDown={handleCanvasPointerDown}
             onClick={handleCanvasClick}
             onPointerMove={handleCanvasPointerMove}
@@ -1818,29 +1749,10 @@ export function FeynmanDiagramEditor({
               );
             })}
 
-            {/* Draft edge line */}
-            {mode === "add-edge" && edgeSourceId && edgeDraftPoint
+            {/* Hook-to-vertex snap indicator ring */}
+            {hookSnapTargetId
               ? (() => {
-                  const source = value.vertices.find((vertex) => vertex.id === edgeSourceId);
-                  if (!source) return null;
-                  return (
-                    <line
-                      x1={source.x}
-                      y1={source.y}
-                      x2={edgeDraftPoint.x}
-                      y2={edgeDraftPoint.y}
-                      stroke="rgba(195, 87, 42, 0.7)"
-                      strokeWidth="2.5"
-                      strokeDasharray="8 6"
-                    />
-                  );
-                })()
-              : null}
-
-            {/* Snap-to-vertex indicator ring */}
-            {mode === "add-edge" && snapTargetVertexId
-              ? (() => {
-                  const snapV = value.vertices.find((v) => v.id === snapTargetVertexId);
+                  const snapV = value.vertices.find((v) => v.id === hookSnapTargetId);
                   if (!snapV) return null;
                   return (
                     <circle
@@ -2084,6 +1996,45 @@ export function FeynmanDiagramEditor({
                   />
                 </Field>
               </div>
+
+              {/* Blob-specific fill options */}
+              {(selectedVertex.kind ?? "none") === "blob" && (
+                <>
+                  <Field label="fill style">
+                    <SelectInput
+                      value={selectedVertex.style?.fillStyle ?? "solid"}
+                      options={SHAPE_FILL_OPTIONS}
+                      onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, style: { ...vertex.style, fillStyle: v } })))}
+                    />
+                  </Field>
+                  {selectedVertex.style?.fillStyle === "hatch" && (
+                    <Field label="background fill">
+                      <TextInput
+                        value={selectedVertex.style?.backgroundFill ?? ""}
+                        placeholder="e.g. white or #fff"
+                        onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({
+                          ...vertex,
+                          style: { ...vertex.style, backgroundFill: v || undefined }
+                        })))}
+                      />
+                    </Field>
+                  )}
+                  <Field label="layer">
+                    <select
+                      value={selectedVertex.layer ?? "front"}
+                      onChange={(e) => commit(updateVertex(value, selectedVertex.id, (vertex) => {
+                        const next = { ...vertex };
+                        if (e.target.value === "back") next.layer = "back"; else delete next.layer;
+                        return next;
+                      }))}
+                      style={INPUT_STYLE}
+                    >
+                      <option value="front">front (default)</option>
+                      <option value="back">back (under edges)</option>
+                    </select>
+                  </Field>
+                </>
+              )}
 
               <Field label="label">
                 <TextInput
@@ -2420,18 +2371,43 @@ export function FeynmanDiagramEditor({
                   </Field>
                 </div>
                 {fillStyle === "hatch" && (
-                  <div style={FIELD_GRID_STYLE}>
-                    <Field label="hatch angle °">
-                      <NumberInput value={st.hatchAngle ?? 45} step={15} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, hatchAngle: v } })))} />
+                  <>
+                    <div style={FIELD_GRID_STYLE}>
+                      <Field label="hatch angle °">
+                        <NumberInput value={st.hatchAngle ?? 45} step={15} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, hatchAngle: v } })))} />
+                      </Field>
+                      <Field label="hatch spacing">
+                        <NumberInput value={st.hatchSpacing ?? 8} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, hatchSpacing: Math.max(2, v) } })))} />
+                      </Field>
+                    </div>
+                    <Field label="background fill">
+                      <TextInput
+                        value={st.backgroundFill ?? ""}
+                        placeholder="e.g. white or #fff"
+                        onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, backgroundFill: v || undefined } })))}
+                      />
                     </Field>
-                    <Field label="hatch spacing">
-                      <NumberInput value={st.hatchSpacing ?? 8} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, hatchSpacing: Math.max(2, v) } })))} />
-                    </Field>
-                  </div>
+                  </>
                 )}
-                <Field label="opacity">
-                  <NumberInput value={st.opacity ?? 1} step={0.05} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, opacity: Math.min(1, Math.max(0, v)) } })))} />
-                </Field>
+                <div style={FIELD_GRID_STYLE}>
+                  <Field label="opacity">
+                    <NumberInput value={st.opacity ?? 1} step={0.05} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, opacity: Math.min(1, Math.max(0, v)) } })))} />
+                  </Field>
+                  <Field label="layer">
+                    <select
+                      value={shape.layer ?? "back"}
+                      onChange={(e) => commit(updateShape(value, shape.id, (s) => {
+                        const next = { ...s };
+                        if (e.target.value === "front") next.layer = "front"; else delete next.layer;
+                        return next;
+                      }))}
+                      style={INPUT_STYLE}
+                    >
+                      <option value="back">back</option>
+                      <option value="front">front</option>
+                    </select>
+                  </Field>
+                </div>
               </div>
             );
           })() : null}
