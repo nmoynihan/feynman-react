@@ -318,15 +318,10 @@ function parseEdge(raw: string): ParsedEdge | null {
   const labelSide: "left" | "right" = opts.kvs["edge label'"] !== undefined ? "right" : "left";
   const momentumRaw = opts.kvs["momentum"] ?? opts.kvs["momentum'"];
 
-  return {
-    from,
-    to,
-    edgeType,
-    bend,
-    label: edgeLabel ? wrapMath(edgeLabel) : undefined,
-    momentum: momentumRaw ? wrapMath(momentumRaw) : undefined,
-    labelSide
-  };
+  const result: ParsedEdge = { from, to, edgeType, bend, labelSide };
+  if (edgeLabel) result.label = wrapMath(edgeLabel);
+  if (momentumRaw) result.momentum = wrapMath(momentumRaw);
+  return result;
 }
 
 // ---------------------------------------------------------------------------

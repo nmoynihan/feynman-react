@@ -1,17 +1,24 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   buildSvgScene,
+  exportToTikz,
+  importFromTikz,
   type ArrowDirection,
   type BuildSvgSceneOptions,
   type CurveType,
   type Diagram,
+  type DiagramShape,
   type Edge,
   type EdgeType,
   type Label,
   type Point,
+  type SceneHatchPattern,
   type SceneLabel,
   type ScenePath,
+  type SceneShape,
   type SceneVertexGlyph,
+  type ShapeFillStyle,
+  type ShapeKind,
   type Vertex,
   type VertexKind,
   type ViewBox
@@ -23,30 +30,38 @@ export type {
   BuildSvgSceneOptions,
   CurveType,
   Diagram,
+  DiagramShape,
   Edge,
   EdgeType,
   Label,
   Point,
+  ShapeFillStyle,
+  ShapeKind,
   Vertex,
   VertexKind,
   ViewBox
 } from "@feynman/core";
 export type { LabelRenderContext } from "@feynman/react";
 
-type EditorMode = "select" | "add-vertex" | "add-edge" | "add-label";
+type EditorMode = "select" | "add-vertex" | "add-edge" | "add-label" | "add-shape";
 type Selection =
   | { kind: "vertex"; id: string }
   | { kind: "edge"; id: string }
   | { kind: "label"; id: string }
+  | { kind: "shape"; id: string }
   | null;
 type DragState =
   | { kind: "vertex"; id: string; extraIds: string[]; extraStarts: Record<string, Point>; pointerId: number; origin: Point; start: Point }
   | { kind: "label"; id: string; pointerId: number; origin: Point; start: Point }
+  | { kind: "shape"; id: string; pointerId: number; origin: Point; start: Point }
   | null;
 type MarqueeState = { pointerId: number; start: Point; current: Point } | null;
+type TikzPanelMode = "import" | "export" | null;
 
 const EDGE_TYPE_OPTIONS: EdgeType[] = ["plain", "fermion", "antiFermion", "scalar", "ghost", "photon", "gluon", "graviton"];
 const VERTEX_KIND_OPTIONS: VertexKind[] = ["none", "dot", "blob", "cross"];
+const SHAPE_KIND_OPTIONS: ShapeKind[] = ["circle", "ellipse"];
+const SHAPE_FILL_OPTIONS: ShapeFillStyle[] = ["solid", "outline", "dashed", "hatch"];
 const CURVE_OPTIONS: CurveType[] = ["line", "arc", "quadratic"];
 const ARROW_OPTIONS: Array<{ value: "auto" | ArrowDirection; label: string }> = [
   { value: "auto", label: "Auto" },
@@ -268,10 +283,31 @@ function zoomViewBox(viewBox: ViewBox, factor: number): ViewBox {
   };
 }
 
+/**
+ * Convert a pointer event's client coordinates to diagram (viewBox) coordinates.
+ *
+ * The overlay SVG uses preserveAspectRatio="xMidYMid meet", which means the
+ * viewBox content is scaled uniformly to fit inside the element and then
+ * centred.  We must account for the resulting letterbox/pillarbox offsets;
+ * otherwise every coordinate is wrong whenever the element aspect ratio
+ * differs from the viewBox aspect ratio.
+ */
 function pointerToDiagramPoint(event: PointerEvent, element: SVGSVGElement, viewBox: ViewBox): Point {
   const rect = element.getBoundingClientRect();
-  const x = viewBox.x + ((event.clientX - rect.left) / Math.max(rect.width, 1)) * viewBox.width;
-  const y = viewBox.y + ((event.clientY - rect.top) / Math.max(rect.height, 1)) * viewBox.height;
+  const elementW = Math.max(rect.width, 1);
+  const elementH = Math.max(rect.height, 1);
+  const vbW = Math.max(viewBox.width, 1);
+  const vbH = Math.max(viewBox.height, 1);
+
+  // xMidYMid meet: uniform scale so the whole viewBox fits, then centred
+  const scale = Math.min(elementW / vbW, elementH / vbH);
+  const renderedW = vbW * scale;
+  const renderedH = vbH * scale;
+  const offsetX = (elementW - renderedW) / 2;
+  const offsetY = (elementH - renderedH) / 2;
+
+  const x = viewBox.x + (event.clientX - rect.left - offsetX) / scale;
+  const y = viewBox.y + (event.clientY - rect.top - offsetY) / scale;
   return { x, y };
 }
 
@@ -342,6 +378,20 @@ function updateLabel(diagram: Diagram, labelId: string, updater: (label: Label) 
   return withOptionalLabels(diagram, nextLabels);
 }
 
+function withOptionalShapes(diagram: Diagram, shapes: DiagramShape[]): Diagram {
+  const next: Diagram = { ...diagram };
+  if (shapes.length === 0) {
+    delete next.shapes;
+  } else {
+    next.shapes = shapes;
+  }
+  return next;
+}
+
+function updateShape(diagram: Diagram, shapeId: string, updater: (shape: DiagramShape) => DiagramShape): Diagram {
+  return withOptionalShapes(diagram, (diagram.shapes ?? []).map((s) => (s.id === shapeId ? updater(s) : s)));
+}
+
 function removeSelected(diagram: Diagram, selection: Selection): Diagram {
   if (!selection) {
     return diagram;
@@ -360,6 +410,10 @@ function removeSelected(diagram: Diagram, selection: Selection): Diagram {
       ...diagram,
       edges: diagram.edges.filter((edge) => edge.id !== selection.id)
     };
+  }
+
+  if (selection.kind === "shape") {
+    return withOptionalShapes(diagram, (diagram.shapes ?? []).filter((s) => s.id !== selection.id));
   }
 
   return withOptionalLabels(diagram, (diagram.labels ?? []).filter((label) => label.id !== selection.id));
@@ -542,7 +596,7 @@ export function FeynmanDiagramEditor({
   const latestOnChangeRef = useRef(onChange);
   const dragFrameRef = useRef<number | null>(null);
   const pendingDragPointRef = useRef<Point | null>(null);
-  const snapToGridRef = useRef(false);
+  const snapToGridRef = useRef(true);
   const marqueeDidDragRef = useRef(false);
   const latestMarqueeRef = useRef<MarqueeState>(null);
 
@@ -559,11 +613,15 @@ export function FeynmanDiagramEditor({
   const [edgeDraftPoint, setEdgeDraftPoint] = useState<Point | null>(null);
   const [newVertexKind, setNewVertexKind] = useState<VertexKind>("dot");
   const [newEdgeType, setNewEdgeType] = useState<EdgeType>("fermion");
-  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(true);
   const [cursorPoint, setCursorPoint] = useState<Point | null>(null);
   const [extraSelectedIds, setExtraSelectedIds] = useState<Set<string>>(new Set());
   const [snapTargetVertexId, setSnapTargetVertexId] = useState<string | null>(null);
   const [marqueeState, setMarqueeState] = useState<MarqueeState>(null);
+  const [newShapeKind, setNewShapeKind] = useState<ShapeKind>("circle");
+  const [tikzPanel, setTikzPanel] = useState<TikzPanelMode>(null);
+  const [tikzImportText, setTikzImportText] = useState("");
+  const [tikzImportWarnings, setTikzImportWarnings] = useState<string[]>([]);
 
   const gridId = useId();
   const autoScene = useMemo(() => buildSvgScene(value, sceneOptions), [value, sceneOptions]);
@@ -692,6 +750,17 @@ export function FeynmanDiagramEditor({
           }
         }
         latestOnChangeRef.current(nextDiagram);
+        return;
+      }
+
+      if (activeDrag.kind === "shape") {
+        latestOnChangeRef.current(
+          updateShape(currentDiagram, activeDrag.id, (shape) => ({
+            ...shape,
+            x: applyCoord(activeDrag.start.x, dx),
+            y: applyCoord(activeDrag.start.y, dy)
+          }))
+        );
         return;
       }
 
@@ -909,6 +978,27 @@ export function FeynmanDiagramEditor({
     }));
   }
 
+  // --- TikZ import / export ---
+
+  function handleExportTikz() {
+    const code = exportToTikz(value);
+    setTikzPanel("export");
+    setTikzImportText(code);
+  }
+
+  function handleOpenImportTikz() {
+    setTikzImportText("");
+    setTikzImportWarnings([]);
+    setTikzPanel("import");
+  }
+
+  function handleApplyTikzImport() {
+    const { diagram: imported, warnings } = importFromTikz(tikzImportText);
+    commit(imported);
+    setTikzImportWarnings(warnings);
+    if (warnings.length === 0) setTikzPanel(null);
+  }
+
   // --- SVG export helpers ---
 
   function exportUnwrapMath(text: string): string | null {
@@ -954,6 +1044,22 @@ export function FeynmanDiagramEditor({
       p.opacity !== undefined && p.opacity !== 1 ? `opacity="${p.opacity}"` : ""
     ].filter(Boolean).join(" ");
     return `<path ${parts}/>`;
+  }
+
+  function exportRenderHatchPattern(p: SceneHatchPattern): string {
+    return `<pattern id="${p.id}" width="${p.spacing}" height="${p.spacing}" patternUnits="userSpaceOnUse" patternTransform="rotate(${p.angle})"><line x1="0" y1="0" x2="0" y2="${p.spacing}" stroke="${exportEscapeXml(p.stroke)}" stroke-width="${p.strokeWidth}"/></pattern>`;
+  }
+
+  function exportRenderShape(s: SceneShape): string {
+    const attrs = [
+      `fill="${exportEscapeXml(s.fill)}"`,
+      `stroke="${exportEscapeXml(s.stroke)}"`,
+      `stroke-width="${s.strokeWidth}"`,
+      s.strokeDasharray ? `stroke-dasharray="${s.strokeDasharray}"` : "",
+      s.opacity !== undefined ? `opacity="${s.opacity}"` : ""
+    ].filter(Boolean).join(" ");
+    if (s.kind === "circle") return `<circle cx="${s.x}" cy="${s.y}" r="${s.rx}" ${attrs}/>`;
+    return `<ellipse cx="${s.x}" cy="${s.y}" rx="${s.rx}" ry="${s.ry}" ${attrs}/>`;
   }
 
   function exportRenderVertex(v: SceneVertexGlyph): string {
@@ -1009,12 +1115,14 @@ export function FeynmanDiagramEditor({
   function handleExportSvg() {
     const exportScene = buildSvgScene(value, sceneOptions);
     const { x, y, width, height } = expandViewBox(exportScene.viewBox, 20);
-    const { arrowMarkerId } = exportScene.defs;
+    const { arrowMarkerId, hatchPatterns } = exportScene.defs;
 
     const titleEl = title
       ? `\n  <title>${exportEscapeXml(title)}</title>`
       : "";
 
+    const hatchStr = hatchPatterns.map(exportRenderHatchPattern).join("\n    ");
+    const shapesStr = exportScene.shapes.map(exportRenderShape).join("\n    ");
     const pathsStr = exportScene.paths.map(exportRenderPath).join("\n    ");
     const verticesStr = exportScene.vertices.map(exportRenderVertex).join("\n    ");
     const labelsStr = exportScene.labels.map(exportRenderLabel).join("\n    ");
@@ -1025,7 +1133,11 @@ export function FeynmanDiagramEditor({
     <marker id="${arrowMarkerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="strokeWidth">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"/>
     </marker>
+    ${hatchStr}
   </defs>
+  <g>
+    ${shapesStr}
+  </g>
   <g>
     ${pathsStr}
   </g>
@@ -1065,13 +1177,15 @@ export function FeynmanDiagramEditor({
       ? `Click the canvas to place ${newVertexKind} vertices. [A]`
       : mode === "add-label"
         ? "Click the canvas to add standalone labels. [L]"
-        : mode === "add-edge"
-          ? edgeSourceId
-            ? `Connect ${edgeSourceId} to another vertex to add a ${newEdgeType} edge.`
-            : `Pick a source vertex for the next ${newEdgeType} edge. [E]`
-          : selection
-            ? `Selected ${selection.kind} ${selection.id}. Drag handles or edit fields in the inspector.`
-            : "Select, drag, and inspect items. [V] Select  [A] Add vertex  [E] Add edge  [L] Add label";
+        : mode === "add-shape"
+          ? `Click the canvas to place a ${newShapeKind}.`
+          : mode === "add-edge"
+            ? edgeSourceId
+              ? `Connect ${edgeSourceId} to another vertex to add a ${newEdgeType} edge.`
+              : `Pick a source vertex for the next ${newEdgeType} edge. [E]`
+            : selection
+              ? `Selected ${selection.kind} ${selection.id}. Drag handles or edit fields in the inspector.`
+              : "Select, drag, and inspect items. [V] Select  [A] Add vertex  [E] Add edge  [L] Add label";
 
   function handleCanvasPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
     if (!overlayRef.current) return;
@@ -1118,6 +1232,25 @@ export function FeynmanDiagramEditor({
       const { diagram: nextDiagram, vertexId } = appendVertex(value, point);
       commit(nextDiagram);
       setSelection({ kind: "vertex", id: vertexId });
+      setExtraSelectedIds(new Set());
+      return;
+    }
+
+    if (mode === "add-shape") {
+      const snap = snapToGrid;
+      const cx = snap ? snapCoordinate(point.x) : roundCoordinate(point.x);
+      const cy = snap ? snapCoordinate(point.y) : roundCoordinate(point.y);
+      const shapeId = createId((value.shapes ?? []).map((s) => s.id), "shape");
+      const newShape: DiagramShape = {
+        id: shapeId,
+        kind: newShapeKind,
+        x: cx,
+        y: cy,
+        rx: 30,
+        ...(newShapeKind === "ellipse" ? { ry: 20 } : {})
+      };
+      commit(withOptionalShapes(value, [...(value.shapes ?? []), newShape]));
+      setSelection({ kind: "shape", id: shapeId });
       setExtraSelectedIds(new Set());
       return;
     }
@@ -1272,6 +1405,16 @@ export function FeynmanDiagramEditor({
     setDragState({ kind: "label", id: label.id, pointerId: event.pointerId, origin: point, start: { x: label.x, y: label.y } });
   }
 
+  function handleShapePointerDown(event: ReactPointerEvent<SVGElement>, shape: DiagramShape) {
+    if (mode !== "select" || !overlayRef.current) return;
+    event.stopPropagation();
+    const point = pointerToDiagramPoint(event.nativeEvent, overlayRef.current, viewport);
+    pushHistory(value);
+    setSelection({ kind: "shape", id: shape.id });
+    setExtraSelectedIds(new Set());
+    setDragState({ kind: "shape", id: shape.id, pointerId: event.pointerId, origin: point, start: { x: shape.x, y: shape.y } });
+  }
+
   function handleEdgeClick(edgeId: string) {
     if (mode === "select") {
       setSelection({ kind: "edge", id: edgeId });
@@ -1424,6 +1567,22 @@ export function FeynmanDiagramEditor({
             >
               Add label
             </button>
+            <button
+              type="button"
+              title="Add shape mode (circle/ellipse)"
+              style={mode === "add-shape" ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
+              onClick={() => setMode("add-shape")}
+            >
+              Add shape
+            </button>
+            <select
+              value={newShapeKind}
+              onChange={(e) => setNewShapeKind(e.target.value as ShapeKind)}
+              style={{ ...INPUT_STYLE, width: 80, height: 32 }}
+              title="Shape kind to place"
+            >
+              {SHAPE_KIND_OPTIONS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
 
             <div style={{ width: 1, height: 20, background: "rgba(26, 37, 47, 0.12)" }} />
 
@@ -1495,6 +1654,22 @@ export function FeynmanDiagramEditor({
               onClick={handleExportSvg}
             >
               Export SVG
+            </button>
+            <button
+              type="button"
+              title="Export as TikZ-Feynman LaTeX code"
+              style={BUTTON_STYLE}
+              onClick={handleExportTikz}
+            >
+              Export TikZ
+            </button>
+            <button
+              type="button"
+              title="Import from TikZ-Feynman LaTeX code"
+              style={BUTTON_STYLE}
+              onClick={handleOpenImportTikz}
+            >
+              Import TikZ
             </button>
           </div>
         </div>
@@ -1704,8 +1879,103 @@ export function FeynmanDiagramEditor({
                   );
                 })()
               : null}
+
+            {/* Shape hit areas and selection highlights */}
+            {(value.shapes ?? []).map((shape) => {
+              const isSelected = selection?.kind === "shape" && selection.id === shape.id;
+              const rx = shape.rx;
+              const ry = shape.ry ?? shape.rx;
+              const hitProps = {
+                fill: "transparent",
+                stroke: "transparent",
+                strokeWidth: Math.max(12, (shape.style?.strokeWidth ?? 3) + 12),
+                style: { cursor: mode === "select" ? "move" : "default" } as CSSProperties,
+                onPointerDown: (e: ReactPointerEvent<SVGElement>) => handleShapePointerDown(e, shape),
+                onClick: (e: ReactMouseEvent) => {
+                  e.stopPropagation();
+                  if (mode === "select") {
+                    setSelection({ kind: "shape", id: shape.id });
+                    setExtraSelectedIds(new Set());
+                  }
+                }
+              };
+              return (
+                <g key={shape.id}>
+                  {isSelected && (
+                    shape.kind === "circle"
+                      ? <circle cx={shape.x} cy={shape.y} r={rx + 6} fill={P08} stroke={P55} strokeWidth="2" strokeDasharray="5 3" pointerEvents="none" />
+                      : <ellipse cx={shape.x} cy={shape.y} rx={rx + 6} ry={ry + 6} fill={P08} stroke={P55} strokeWidth="2" strokeDasharray="5 3" pointerEvents="none" />
+                  )}
+                  {shape.kind === "circle"
+                    ? <circle cx={shape.x} cy={shape.y} r={rx} {...hitProps} />
+                    : <ellipse cx={shape.x} cy={shape.y} rx={rx} ry={ry} {...hitProps} />
+                  }
+                </g>
+              );
+            })}
           </svg>
         </div>
+
+        {/* TikZ panel overlay */}
+        {tikzPanel !== null && (
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 10
+          }}>
+            <div style={{
+              background: BG, borderRadius: 14, padding: 24, width: 560, maxWidth: "90vw",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column", gap: 14
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: FG }}>
+                  {tikzPanel === "export" ? "TikZ-Feynman export" : "TikZ-Feynman import"}
+                </div>
+                <button type="button" style={BUTTON_STYLE} onClick={() => setTikzPanel(null)}>Close</button>
+              </div>
+              <textarea
+                value={tikzImportText}
+                onChange={(e) => setTikzImportText(e.target.value)}
+                readOnly={tikzPanel === "export"}
+                rows={14}
+                spellCheck={false}
+                style={{
+                  width: "100%", fontFamily: "monospace", fontSize: 12,
+                  border: `1px solid ${BORDER}`, borderRadius: 8,
+                  padding: 10, background: tikzPanel === "export" ? MUTED : BG,
+                  color: FG, resize: "vertical", boxSizing: "border-box"
+                }}
+              />
+              {tikzPanel === "export" && (
+                <button
+                  type="button"
+                  style={BUTTON_STYLE}
+                  onClick={() => { navigator.clipboard?.writeText(tikzImportText); }}
+                >
+                  Copy to clipboard
+                </button>
+              )}
+              {tikzPanel === "import" && (
+                <>
+                  <button
+                    type="button"
+                    style={ACTIVE_BUTTON_STYLE}
+                    onClick={handleApplyTikzImport}
+                    disabled={!tikzImportText.trim()}
+                  >
+                    Apply import
+                  </button>
+                  {tikzImportWarnings.length > 0 && (
+                    <div style={{ fontSize: 12, color: DESTRUCT }}>
+                      {tikzImportWarnings.map((w, i) => <div key={i}>{w}</div>)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <div id="fde-status" style={STATUS_STYLE}>
           <span>{currentModeHint}</span>
@@ -1716,7 +1986,7 @@ export function FeynmanDiagramEditor({
               </span>
             ) : null}
             <span>
-              {value.vertices.length} vertices · {value.edges.length} edges · {(value.labels ?? []).length} labels
+              {value.vertices.length} vertices · {value.edges.length} edges · {(value.labels ?? []).length} labels · {(value.shapes ?? []).length} shapes
             </span>
           </span>
         </div>
@@ -1796,9 +2066,24 @@ export function FeynmanDiagramEditor({
                 </Field>
               </div>
 
-              <Field label="kind">
-                <SelectInput value={selectedVertex.kind ?? "none"} options={VERTEX_KIND_OPTIONS} onChange={(nextValue) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, kind: nextValue })))} />
-              </Field>
+              <div style={FIELD_GRID_STYLE}>
+                <Field label="kind">
+                  <SelectInput value={selectedVertex.kind ?? "none"} options={VERTEX_KIND_OPTIONS} onChange={(nextValue) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, kind: nextValue })))} />
+                </Field>
+                <Field label="glyph radius">
+                  <NumberInput
+                    value={selectedVertex.size ?? 0}
+                    step={1}
+                    onChange={(nextValue) => {
+                      commit(updateVertex(value, selectedVertex.id, (vertex) => {
+                        const next = { ...vertex };
+                        if (nextValue > 0) next.size = nextValue; else delete next.size;
+                        return next;
+                      }));
+                    }}
+                  />
+                </Field>
+              </div>
 
               <Field label="label">
                 <TextInput
@@ -2079,6 +2364,77 @@ export function FeynmanDiagramEditor({
               </button>
             </div>
           ) : null}
+
+          {/* Shape inspector */}
+          {selection?.kind === "shape" ? (() => {
+            const shape = (value.shapes ?? []).find((s) => s.id === selection.id);
+            if (!shape) return null;
+            const st = shape.style ?? {};
+            const fillStyle = st.fillStyle ?? "solid";
+            return (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={FIELD_GRID_STYLE}>
+                  <Field label="x">
+                    <NumberInput value={shape.x} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, x: v })))} />
+                  </Field>
+                  <Field label="y">
+                    <NumberInput value={shape.y} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, y: v })))} />
+                  </Field>
+                </div>
+                <div style={FIELD_GRID_STYLE}>
+                  <Field label={shape.kind === "circle" ? "radius" : "radius x"}>
+                    <NumberInput value={shape.rx} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, rx: Math.max(1, v) })))} />
+                  </Field>
+                  {shape.kind === "ellipse" && (
+                    <Field label="radius y">
+                      <NumberInput value={shape.ry ?? shape.rx} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, ry: Math.max(1, v) })))} />
+                    </Field>
+                  )}
+                </div>
+                <Field label="fill style">
+                  <SelectInput value={fillStyle} options={SHAPE_FILL_OPTIONS} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, fillStyle: v } })))} />
+                </Field>
+                {(fillStyle === "solid" || fillStyle === "hatch") && (
+                  <Field label="fill color">
+                    <TextInput
+                      value={st.fill ?? ""}
+                      placeholder="e.g. #aaccff or blue"
+                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, fill: v || undefined } })))}
+                    />
+                  </Field>
+                )}
+                <div style={FIELD_GRID_STYLE}>
+                  <Field label="stroke color">
+                    <TextInput
+                      value={st.stroke ?? ""}
+                      placeholder="inherit"
+                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, stroke: v || undefined } })))}
+                    />
+                  </Field>
+                  <Field label="stroke width">
+                    <NumberInput
+                      value={st.strokeWidth ?? 0}
+                      step={0.5}
+                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, strokeWidth: v > 0 ? v : undefined } })))}
+                    />
+                  </Field>
+                </div>
+                {fillStyle === "hatch" && (
+                  <div style={FIELD_GRID_STYLE}>
+                    <Field label="hatch angle °">
+                      <NumberInput value={st.hatchAngle ?? 45} step={15} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, hatchAngle: v } })))} />
+                    </Field>
+                    <Field label="hatch spacing">
+                      <NumberInput value={st.hatchSpacing ?? 8} step={1} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, hatchSpacing: Math.max(2, v) } })))} />
+                    </Field>
+                  </div>
+                )}
+                <Field label="opacity">
+                  <NumberInput value={st.opacity ?? 1} step={0.05} onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, opacity: Math.min(1, Math.max(0, v)) } })))} />
+                </Field>
+              </div>
+            );
+          })() : null}
         </section>
       </aside>
     </div>

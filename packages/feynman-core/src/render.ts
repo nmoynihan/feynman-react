@@ -634,7 +634,7 @@ function buildSceneShape(
     // also draw border
   }
 
-  return {
+  const result: SceneShape = {
     id: shape.id,
     kind: shape.kind,
     x: shape.x,
@@ -644,11 +644,12 @@ function buildSceneShape(
     fill,
     stroke,
     strokeWidth: sw,
-    strokeDasharray,
-    fillStyle,
-    hatchPatternId,
-    opacity: s.opacity === 1 ? undefined : s.opacity
+    fillStyle
   };
+  if (strokeDasharray !== undefined) result.strokeDasharray = strokeDasharray;
+  if (hatchPatternId !== undefined) result.hatchPatternId = hatchPatternId;
+  if (s.opacity !== 1) result.opacity = s.opacity;
+  return result;
 }
 
 /**

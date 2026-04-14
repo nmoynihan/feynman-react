@@ -202,4 +202,4 @@ export function normalizeDiagram(diagram: Diagram): NormalizedDiagram {
   };
 }
 
-export { DEFAULT_STYLE };
+
