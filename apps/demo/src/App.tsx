@@ -131,12 +131,12 @@ export function App() {
             <span>v2</span>
           </div>
           <ul style={{ margin: 0, padding: "0 0 0 18px", lineHeight: 1.8, fontSize: 13 }}>
-            <li><strong>Shapes</strong> – click <em>Add shape</em> in the toolbar to place circles and ellipses. Supports solid, outline, dashed and hatch fills.</li>
-            <li><strong>Vertex size</strong> – select a vertex in the inspector and edit <em>glyph radius</em> to override the default size.</li>
-            <li><strong>Snap on by default</strong> – grid snap is now enabled when the editor loads.</li>
-            <li><strong>TikZ export</strong> – click <em>Export TikZ</em> to copy a tikz-feynman LaTeX snippet.</li>
-            <li><strong>TikZ import</strong> – click <em>Import TikZ</em> and paste a tikz-feynman snippet to load it.</li>
-            <li><strong>Pointer fix</strong> – drag-to-select, vertex placement and dragging are now correctly aligned with the actual mouse position.</li>
+            <li><strong>Instant add</strong> – toolbar buttons (and A / E / L shortcuts) immediately place items at canvas centre; no click-to-place mode needed.</li>
+            <li><strong>Hook vertices &amp; edges</strong> – <em>Add edge</em> creates two hook endpoints. Drag a hook onto a real vertex to merge them. Hook is also a vertex kind option.</li>
+            <li><strong>Shapes</strong> – <em>Add shape</em> places circles/ellipses with solid, outline, dashed, hatch fills, optional background fill, and front/back layer ordering.</li>
+            <li><strong>Blob fill styles</strong> – blob vertices support solid, outline, dashed, hatch fills, background fill, and layer (front / behind edges).</li>
+            <li><strong>Vertex size</strong> – select a vertex and edit <em>glyph radius</em> to override the default (also applies to cross and blob).</li>
+            <li><strong>TikZ I/O</strong> – <em>Export TikZ</em> / <em>Import TikZ</em> for tikz-feynman LaTeX round-trips.</li>
           </ul>
         </section>
       </aside>

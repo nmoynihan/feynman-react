@@ -8,7 +8,7 @@ export type EdgeType =
   | "gluon"
   | "graviton";
 
-export type VertexKind = "none" | "dot" | "blob" | "cross";
+export type VertexKind = "none" | "dot" | "blob" | "cross" | "hook";
 export type CurveType = "line" | "arc" | "quadratic";
 export type ArrowDirection = "forward" | "backward" | "none";
 export type LabelSide = "left" | "right";
@@ -56,6 +56,10 @@ export interface EdgeStyle extends Partial<DiagramStyle> {
 export interface VertexStyle extends Partial<DiagramStyle> {
   fill?: string;
   stroke?: string;
+  /** Fill style for blob vertices (solid/outline/dashed/hatch). Default "solid". */
+  fillStyle?: ShapeFillStyle;
+  /** Optional solid background fill drawn beneath the hatch (blob vertices with fillStyle==="hatch"). */
+  backgroundFill?: string;
 }
 
 export interface LabelStyle extends Partial<DiagramStyle> {
@@ -78,6 +82,8 @@ export interface ShapeStyle {
   hatchAngle?: number;
   /** Spacing between hatch lines in diagram units (used when fillStyle === "hatch"). Default 8. */
   hatchSpacing?: number;
+  /** Optional solid background fill drawn beneath the hatch pattern (used when fillStyle === "hatch"). */
+  backgroundFill?: string;
 }
 
 /** A shape item stored in a diagram's canonical JSON. */
@@ -93,6 +99,8 @@ export interface DiagramShape {
   /** Vertical radius (for ellipses; defaults to rx). */
   ry?: number;
   style?: ShapeStyle;
+  /** Render layer: "back" renders before edges (default), "front" renders after vertex glyphs. */
+  layer?: "back" | "front";
 }
 
 export interface Vertex {
@@ -102,12 +110,14 @@ export interface Vertex {
   kind?: VertexKind;
   /**
    * Radius of the vertex glyph in diagram units.
-   * Overrides the diagram-level vertexRadius / blobRadius when set.
+   * Overrides the diagram-level vertexRadius / blobRadius / crossSize when set.
    */
   size?: number;
   label?: string;
   labelOffset?: Point;
   style?: VertexStyle;
+  /** Render layer for blob vertices: "back" draws before edges, "front" (default) draws after. */
+  layer?: "back" | "front";
 }
 
 export interface Edge {
@@ -219,6 +229,14 @@ export interface SceneVertexGlyph {
   strokeWidth: number;
   fill: string;
   crossSize: number;
+  /** Optional hatch pattern id (url reference). Only present on blob with fillStyle="hatch". */
+  hatchPatternId?: string;
+  /** For blob vertices: the fill style being used. */
+  fillStyle?: ShapeFillStyle;
+  /** For blob vertices with hatch: optional solid background fill. */
+  backgroundFill?: string;
+  /** Render layer: "back" draws before edges, "front" (default) draws after paths. */
+  layer?: "back" | "front";
 }
 
 /** A hatch pattern definition to be emitted into SVG <defs>. */
@@ -247,6 +265,10 @@ export interface SceneShape {
   /** Reference to a hatch pattern id in SvgScene.defs.hatchPatterns (only when fillStyle==="hatch"). */
   hatchPatternId?: string;
   opacity?: number;
+  /** Optional solid background fill rendered beneath the hatch pattern. */
+  backgroundFill?: string;
+  /** Render layer: "back" (default) draws before edges, "front" draws after vertex glyphs. */
+  layer?: "back" | "front";
 }
 
 export interface EdgeGeometry {

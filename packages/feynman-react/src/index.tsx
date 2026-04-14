@@ -255,6 +255,41 @@ function RenderVertex({ vertex }: { vertex: SceneVertexGlyph }) {
     );
   }
 
+  if (vertex.kind === "hook") {
+    // Rendered as a small open circle with a dashed stroke to distinguish from real vertices
+    return (
+      <circle
+        cx={vertex.x}
+        cy={vertex.y}
+        r={vertex.radius}
+        fill="none"
+        stroke={vertex.stroke}
+        strokeWidth={vertex.strokeWidth}
+        strokeDasharray="3 2"
+        opacity={0.55}
+      />
+    );
+  }
+
+  if (vertex.kind === "blob" && vertex.backgroundFill) {
+    const sw = vertex.fillStyle === "dashed"
+      ? `${vertex.strokeWidth * 4} ${vertex.strokeWidth * 3}`
+      : undefined;
+    return (
+      <g>
+        <circle cx={vertex.x} cy={vertex.y} r={vertex.radius} fill={vertex.backgroundFill} stroke="none" strokeWidth={0} />
+        <circle cx={vertex.x} cy={vertex.y} r={vertex.radius} fill={vertex.fill} stroke={vertex.stroke} strokeWidth={vertex.strokeWidth} strokeDasharray={sw} />
+      </g>
+    );
+  }
+
+  if (vertex.kind === "blob" && vertex.fillStyle === "dashed") {
+    const sw = `${vertex.strokeWidth * 4} ${vertex.strokeWidth * 3}`;
+    return (
+      <circle cx={vertex.x} cy={vertex.y} r={vertex.radius} fill="none" stroke={vertex.stroke} strokeWidth={vertex.strokeWidth} strokeDasharray={sw} />
+    );
+  }
+
   return (
     <circle
       cx={vertex.x}
@@ -304,11 +339,25 @@ function RenderShape({ shape }: { shape: SceneShape }) {
     opacity: shape.opacity
   };
 
+  const bgProps = shape.backgroundFill
+    ? { fill: shape.backgroundFill, stroke: "none", strokeWidth: 0 }
+    : null;
+
   if (shape.kind === "circle") {
-    return <circle cx={shape.x} cy={shape.y} r={shape.rx} {...sharedProps} />;
+    return (
+      <>
+        {bgProps ? <circle cx={shape.x} cy={shape.y} r={shape.rx} {...bgProps} /> : null}
+        <circle cx={shape.x} cy={shape.y} r={shape.rx} {...sharedProps} />
+      </>
+    );
   }
 
-  return <ellipse cx={shape.x} cy={shape.y} rx={shape.rx} ry={shape.ry} {...sharedProps} />;
+  return (
+    <>
+      {bgProps ? <ellipse cx={shape.x} cy={shape.y} rx={shape.rx} ry={shape.ry} {...bgProps} /> : null}
+      <ellipse cx={shape.x} cy={shape.y} rx={shape.rx} ry={shape.ry} {...sharedProps} />
+    </>
+  );
 }
 
 function renderLabel(label: SceneLabel, labelRenderer?: (context: LabelRenderContext) => ReactNode) {
@@ -331,6 +380,12 @@ export function FeynmanSceneSvg({
   ...svgProps
 }: FeynmanSceneSvgProps) {
   const { viewBox } = scene;
+
+  // Split shapes and vertices by layer
+  const backShapes = scene.shapes.filter((s) => !s.layer || s.layer === "back");
+  const frontShapes = scene.shapes.filter((s) => s.layer === "front");
+  const backVertices = scene.vertices.filter((v) => v.layer === "back");
+  const frontVertices = scene.vertices.filter((v) => !v.layer || v.layer === "front");
 
   return (
     <svg
@@ -361,12 +416,13 @@ export function FeynmanSceneSvg({
         ))}
       </defs>
 
-      {/* Shapes render behind paths and vertices */}
-      <g>
-        {scene.shapes.map((shape) => (
-          <RenderShape key={shape.id} shape={shape} />
-        ))}
-      </g>
+      {/* Back-layer shapes and blob vertices render before paths/edges */}
+      {(backShapes.length > 0 || backVertices.length > 0) ? (
+        <g>
+          {backShapes.map((shape) => <RenderShape key={shape.id} shape={shape} />)}
+          {backVertices.map((vertex) => <RenderVertex key={vertex.id} vertex={vertex} />)}
+        </g>
+      ) : null}
 
       <g>
         {scene.paths.map((path) => (
@@ -374,11 +430,19 @@ export function FeynmanSceneSvg({
         ))}
       </g>
 
+      {/* Front-layer vertex glyphs (default layer) */}
       <g>
-        {scene.vertices.map((vertex) => (
+        {frontVertices.map((vertex) => (
           <RenderVertex key={vertex.id} vertex={vertex} />
         ))}
       </g>
+
+      {/* Front-layer shapes render after vertex glyphs */}
+      {frontShapes.length > 0 ? (
+        <g>
+          {frontShapes.map((shape) => <RenderShape key={shape.id} shape={shape} />)}
+        </g>
+      ) : null}
 
       <g>
         {scene.labels.map((label) => (
