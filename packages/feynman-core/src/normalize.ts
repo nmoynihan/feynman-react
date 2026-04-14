@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 const DEFAULT_STYLE: Required<DiagramStyle> = {
-  color: "#111827",
+  color: "currentColor",
   strokeWidth: 2.2,
   fontSize: 16,
   fontFamily: "'IBM Plex Sans', 'Segoe UI', sans-serif",

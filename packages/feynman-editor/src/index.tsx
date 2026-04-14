@@ -79,7 +79,6 @@ const P08  = "oklch(0.6716 0.1368 48.5130 / 0.08)";
 const P10  = "oklch(0.6716 0.1368 48.5130 / 0.10)";
 const P50  = "oklch(0.6716 0.1368 48.5130 / 0.5)";
 // secondary (muted blue) for edge-drawing workflow indicators
-const SEC    = "oklch(0.5360 0.0398 196.0280)";
 const SEC70  = "oklch(0.5360 0.0398 196.0280 / 0.7)";
 const SEC08  = "oklch(0.5360 0.0398 196.0280 / 0.08)";
 const SEC42  = "oklch(0.5360 0.0398 196.0280 / 0.42)";
