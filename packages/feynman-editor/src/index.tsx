@@ -1145,8 +1145,16 @@ export function FeynmanDiagramEditor({
       s.strokeDasharray ? `stroke-dasharray="${s.strokeDasharray}"` : "",
       s.opacity !== undefined ? `opacity="${s.opacity}"` : ""
     ].filter(Boolean).join(" ");
-    if (s.kind === "circle") return `<circle cx="${s.x}" cy="${s.y}" r="${s.rx}" ${attrs}/>`;
-    return `<ellipse cx="${s.x}" cy="${s.y}" rx="${s.rx}" ry="${s.ry}" ${attrs}/>`;
+    const bgAttrs = `fill="${exportEscapeXml(s.backgroundFill ?? "")}" stroke="none" stroke-width="0"`;
+    const bgEl = s.backgroundFill
+      ? (s.kind === "circle"
+          ? `<circle cx="${s.x}" cy="${s.y}" r="${s.rx}" ${bgAttrs}/>`
+          : `<ellipse cx="${s.x}" cy="${s.y}" rx="${s.rx}" ry="${s.ry}" ${bgAttrs}/>`)
+      : "";
+    const mainEl = s.kind === "circle"
+      ? `<circle cx="${s.x}" cy="${s.y}" r="${s.rx}" ${attrs}/>`
+      : `<ellipse cx="${s.x}" cy="${s.y}" rx="${s.rx}" ry="${s.ry}" ${attrs}/>`;
+    return bgEl ? `<g>${bgEl}${mainEl}</g>` : mainEl;
   }
 
   function exportRenderVertex(v: SceneVertexGlyph): string {
@@ -1209,9 +1217,19 @@ export function FeynmanDiagramEditor({
       : "";
 
     const hatchStr = hatchPatterns.map(exportRenderHatchPattern).join("\n    ");
-    const shapesStr = exportScene.shapes.map(exportRenderShape).join("\n    ");
+
+    // Mirror the layer ordering used by FeynmanSceneSvg:
+    //   back shapes + back vertices → paths → front vertices → front shapes → labels
+    const backShapes = exportScene.shapes.filter((s) => !s.layer || s.layer === "back");
+    const frontShapes = exportScene.shapes.filter((s) => s.layer === "front");
+    const backVertices = exportScene.vertices.filter((v) => v.layer === "back");
+    const frontVertices = exportScene.vertices.filter((v) => !v.layer || v.layer === "front");
+
+    const backShapesStr = backShapes.map(exportRenderShape).join("\n    ");
+    const backVerticesStr = backVertices.map(exportRenderVertex).join("\n    ");
     const pathsStr = exportScene.paths.map(exportRenderPath).join("\n    ");
-    const verticesStr = exportScene.vertices.map(exportRenderVertex).join("\n    ");
+    const frontVerticesStr = frontVertices.map(exportRenderVertex).join("\n    ");
+    const frontShapesStr = frontShapes.map(exportRenderShape).join("\n    ");
     const labelsStr = exportScene.labels.map(exportRenderLabel).join("\n    ");
 
     const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1223,13 +1241,17 @@ export function FeynmanDiagramEditor({
     ${hatchStr}
   </defs>
   <g>
-    ${shapesStr}
+    ${backShapesStr}
+    ${backVerticesStr}
   </g>
   <g>
     ${pathsStr}
   </g>
   <g>
-    ${verticesStr}
+    ${frontVerticesStr}
+  </g>
+  <g>
+    ${frontShapesStr}
   </g>
   <g>
     ${labelsStr}
