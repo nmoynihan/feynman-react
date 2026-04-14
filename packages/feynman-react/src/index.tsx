@@ -4,13 +4,24 @@ import {
   buildSvgScene,
   type BuildSvgSceneOptions,
   type Diagram,
+  type SceneHatchPattern,
   type SceneLabel,
   type ScenePath,
+  type SceneShape,
   type SceneVertexGlyph,
   type SvgScene
 } from "@feynman/core";
 
-export type { BuildSvgSceneOptions, Diagram, SceneLabel, ScenePath, SceneVertexGlyph, SvgScene } from "@feynman/core";
+export type {
+  BuildSvgSceneOptions,
+  Diagram,
+  SceneHatchPattern,
+  SceneLabel,
+  ScenePath,
+  SceneShape,
+  SceneVertexGlyph,
+  SvgScene
+} from "@feynman/core";
 
 export interface LabelRenderContext {
   label: SceneLabel;
@@ -256,6 +267,50 @@ function RenderVertex({ vertex }: { vertex: SceneVertexGlyph }) {
   );
 }
 
+/** Render SVG <pattern> elements for hatch fills. */
+function RenderHatchPattern({ pattern }: { pattern: SceneHatchPattern }) {
+  // We rotate the pattern tile to achieve arbitrary angles.
+  // The tile is a simple diagonal line within a square cell.
+  const s = pattern.spacing;
+  // Use a rotated 1×1 cell pattern
+  const angle = pattern.angle;
+  const transform = `rotate(${angle})`;
+  return (
+    <pattern
+      id={pattern.id}
+      width={s}
+      height={s}
+      patternUnits="userSpaceOnUse"
+      patternTransform={transform}
+    >
+      <line
+        x1={0}
+        y1={0}
+        x2={0}
+        y2={s}
+        stroke={pattern.stroke}
+        strokeWidth={pattern.strokeWidth}
+      />
+    </pattern>
+  );
+}
+
+function RenderShape({ shape }: { shape: SceneShape }) {
+  const sharedProps = {
+    fill: shape.fill,
+    stroke: shape.stroke,
+    strokeWidth: shape.strokeWidth,
+    strokeDasharray: shape.strokeDasharray,
+    opacity: shape.opacity
+  };
+
+  if (shape.kind === "circle") {
+    return <circle cx={shape.x} cy={shape.y} r={shape.rx} {...sharedProps} />;
+  }
+
+  return <ellipse cx={shape.x} cy={shape.y} rx={shape.rx} ry={shape.ry} {...sharedProps} />;
+}
+
 function renderLabel(label: SceneLabel, labelRenderer?: (context: LabelRenderContext) => ReactNode) {
   const defaultElement = <DefaultLabel label={label} />;
   if (!labelRenderer) {
@@ -301,7 +356,17 @@ export function FeynmanSceneSvg({
         >
           <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
         </marker>
+        {scene.defs.hatchPatterns.map((pattern) => (
+          <RenderHatchPattern key={pattern.id} pattern={pattern} />
+        ))}
       </defs>
+
+      {/* Shapes render behind paths and vertices */}
+      <g>
+        {scene.shapes.map((shape) => (
+          <RenderShape key={shape.id} shape={shape} />
+        ))}
+      </g>
 
       <g>
         {scene.paths.map((path) => (

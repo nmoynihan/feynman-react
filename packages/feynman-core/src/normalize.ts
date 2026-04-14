@@ -1,15 +1,18 @@
 import type {
   Diagram,
+  DiagramShape,
   DiagramStyle,
   Edge,
   NormalizedDiagram,
   NormalizedEdge,
   NormalizedLabel,
+  NormalizedShape,
   NormalizedVertex,
+  ShapeStyle,
   ViewBox
 } from "./types";
 
-const DEFAULT_STYLE: Required<DiagramStyle> = {
+export const DEFAULT_STYLE: Required<DiagramStyle> = {
   color: "currentColor",
   strokeWidth: 2.2,
   fontSize: 16,
@@ -24,6 +27,16 @@ const DEFAULT_STYLE: Required<DiagramStyle> = {
   gluonAmplitude: 7,
   gluonWavelength: 18,
   gravitonSeparation: 5
+};
+
+const DEFAULT_SHAPE_STYLE: Required<ShapeStyle> = {
+  fillStyle: "solid",
+  fill: "",          // empty = use diagram color
+  stroke: "",        // empty = use diagram color
+  strokeWidth: 0,    // 0 = use diagram strokeWidth
+  opacity: 1,
+  hatchAngle: 45,
+  hatchSpacing: 8
 };
 
 function computeViewBox(diagram: Diagram): ViewBox {
@@ -93,6 +106,23 @@ function normalizeEdge(edge: Edge, style: Required<DiagramStyle>): NormalizedEdg
   };
 }
 
+function normalizeShape(shape: DiagramShape): NormalizedShape {
+  const s = shape.style ?? {};
+  return {
+    ...shape,
+    ry: shape.ry ?? shape.rx,
+    style: {
+      fillStyle: s.fillStyle ?? DEFAULT_SHAPE_STYLE.fillStyle,
+      fill: s.fill ?? DEFAULT_SHAPE_STYLE.fill,
+      stroke: s.stroke ?? DEFAULT_SHAPE_STYLE.stroke,
+      strokeWidth: s.strokeWidth ?? DEFAULT_SHAPE_STYLE.strokeWidth,
+      opacity: s.opacity ?? DEFAULT_SHAPE_STYLE.opacity,
+      hatchAngle: s.hatchAngle ?? DEFAULT_SHAPE_STYLE.hatchAngle,
+      hatchSpacing: s.hatchSpacing ?? DEFAULT_SHAPE_STYLE.hatchSpacing
+    }
+  };
+}
+
 export function normalizeDiagram(diagram: Diagram): NormalizedDiagram {
   const style: Required<DiagramStyle> = {
     ...DEFAULT_STYLE,
@@ -151,10 +181,21 @@ export function normalizeDiagram(diagram: Diagram): NormalizedDiagram {
     };
   });
 
+  const seenShapeIds = new Set<string>();
+  const shapes = (diagram.shapes ?? []).map<NormalizedShape>((shape) => {
+    if (seenShapeIds.has(shape.id)) {
+      throw new Error(`Duplicate shape id: ${shape.id}`);
+    }
+
+    seenShapeIds.add(shape.id);
+    return normalizeShape(shape);
+  });
+
   return {
     vertices,
     edges,
     labels,
+    shapes,
     style,
     viewBox: computeViewBox(diagram),
     vertexMap
