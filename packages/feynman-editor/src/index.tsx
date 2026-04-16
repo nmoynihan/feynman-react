@@ -957,25 +957,6 @@ export function FeynmanDiagramEditor({
     };
   }
 
-  function appendEdge(diagram: Diagram, from: string, to: string): { diagram: Diagram; edgeId: string } {
-    const edgeId = createId(diagram.edges.map((edge) => edge.id), "e");
-    return {
-      edgeId,
-      diagram: {
-        ...diagram,
-        edges: [
-          ...diagram.edges,
-          {
-            id: edgeId,
-            from,
-            to,
-            type: newEdgeType
-          }
-        ]
-      }
-    };
-  }
-
   function handleDuplicate() {
     if (!selection) return;
 
