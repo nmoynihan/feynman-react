@@ -1,4 +1,5 @@
 import type { CSSProperties, ComponentProps, ReactNode, SVGProps } from "react";
+import { useId } from "react";
 import { MathJax, MathJaxContext } from "better-react-mathjax";
 import {
   buildSvgScene,
@@ -256,7 +257,6 @@ function RenderVertex({ vertex }: { vertex: SceneVertexGlyph }) {
   }
 
   if (vertex.kind === "hook") {
-    // Rendered as a small open circle with a dashed stroke to distinguish from real vertices
     return (
       <circle
         cx={vertex.x}
@@ -304,10 +304,7 @@ function RenderVertex({ vertex }: { vertex: SceneVertexGlyph }) {
 
 /** Render SVG <pattern> elements for hatch fills. */
 function RenderHatchPattern({ pattern }: { pattern: SceneHatchPattern }) {
-  // We rotate the pattern tile to achieve arbitrary angles.
-  // The tile is a simple diagonal line within a square cell.
   const s = pattern.spacing;
-  // Use a rotated 1×1 cell pattern
   const angle = pattern.angle;
   const transform = `rotate(${angle})`;
   return (
@@ -379,13 +376,39 @@ export function FeynmanSceneSvg({
   preserveAspectRatio = "xMidYMid meet",
   ...svgProps
 }: FeynmanSceneSvgProps) {
+  // useId generates a unique prefix per component instance, preventing SVG
+  // <defs> ID collisions when multiple diagrams appear on the same page.
+  const rawId = useId().replace(/:/g, "");
   const { viewBox } = scene;
 
-  // Split shapes and vertices by layer
-  const backShapes = scene.shapes.filter((s) => !s.layer || s.layer === "back");
-  const frontShapes = scene.shapes.filter((s) => s.layer === "front");
-  const backVertices = scene.vertices.filter((v) => v.layer === "back");
-  const frontVertices = scene.vertices.filter((v) => !v.layer || v.layer === "front");
+  const remapId = (id: string) => `fi${rawId}-${id}`;
+  const remapRef = (ref: string | undefined) =>
+    ref?.replace(/url\(#([^)]+)\)/g, (_, id: string) => `url(#${remapId(id)})`);
+
+  // Pre-remap url() references so sub-components stay props-simple.
+  const paths = scene.paths.map((p) => ({
+    ...p,
+    markerStart: remapRef(p.markerStart),
+    markerEnd: remapRef(p.markerEnd),
+    fill: remapRef(p.fill) ?? p.fill,
+  }));
+
+  const remapVertex = (v: SceneVertexGlyph): SceneVertexGlyph => ({
+    ...v,
+    fill: remapRef(v.fill) ?? v.fill,
+    ...(v.backgroundFill ? { backgroundFill: remapRef(v.backgroundFill) ?? v.backgroundFill } : {}),
+  });
+
+  const remapShape = (s: SceneShape): SceneShape => ({
+    ...s,
+    fill: remapRef(s.fill) ?? s.fill,
+    ...(s.backgroundFill ? { backgroundFill: remapRef(s.backgroundFill) ?? s.backgroundFill } : {}),
+  });
+
+  const backShapes = scene.shapes.filter((s) => !s.layer || s.layer === "back").map(remapShape);
+  const frontShapes = scene.shapes.filter((s) => s.layer === "front").map(remapShape);
+  const backVertices = scene.vertices.filter((v) => v.layer === "back").map(remapVertex);
+  const frontVertices = scene.vertices.filter((v) => !v.layer || v.layer === "front").map(remapVertex);
 
   return (
     <svg
@@ -400,7 +423,7 @@ export function FeynmanSceneSvg({
       {title ? <title>{title}</title> : null}
       <defs>
         <marker
-          id={scene.defs.arrowMarkerId}
+          id={remapId(scene.defs.arrowMarkerId)}
           viewBox="0 0 10 10"
           refX="9"
           refY="5"
@@ -412,11 +435,10 @@ export function FeynmanSceneSvg({
           <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
         </marker>
         {scene.defs.hatchPatterns.map((pattern) => (
-          <RenderHatchPattern key={pattern.id} pattern={pattern} />
+          <RenderHatchPattern key={pattern.id} pattern={{ ...pattern, id: remapId(pattern.id) }} />
         ))}
       </defs>
 
-      {/* Back-layer shapes and blob vertices render before paths/edges */}
       {(backShapes.length > 0 || backVertices.length > 0) ? (
         <g>
           {backShapes.map((shape) => <RenderShape key={shape.id} shape={shape} />)}
@@ -425,19 +447,17 @@ export function FeynmanSceneSvg({
       ) : null}
 
       <g>
-        {scene.paths.map((path) => (
+        {paths.map((path) => (
           <RenderPath key={path.id} path={path} />
         ))}
       </g>
 
-      {/* Front-layer vertex glyphs (default layer) */}
       <g>
         {frontVertices.map((vertex) => (
           <RenderVertex key={vertex.id} vertex={vertex} />
         ))}
       </g>
 
-      {/* Front-layer shapes render after vertex glyphs */}
       {frontShapes.length > 0 ? (
         <g>
           {frontShapes.map((shape) => <RenderShape key={shape.id} shape={shape} />)}
