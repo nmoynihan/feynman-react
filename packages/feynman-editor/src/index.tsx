@@ -345,6 +345,16 @@ function normalizeOptionalText(value: string): string | null {
   return value.length > 0 ? value : null;
 }
 
+function setStyle<T extends object>(style: T | undefined, key: keyof T, value: any): T {
+  const next = { ...style } as T;
+  if (!value) {
+    delete next[key];
+  } else {
+    next[key] = value;
+  }
+  return next;
+}
+
 function belongsToEdge(pathId: string, edgeId: string): boolean {
   return pathId === edgeId || pathId.startsWith(`${edgeId}-`);
 }
@@ -1084,12 +1094,6 @@ export function FeynmanDiagramEditor({
     const code = exportToTikz(value);
     setTikzPanel("export");
     setTikzImportText(code);
-  }
-
-  function handleOpenImportTikz() {
-    setTikzImportText("");
-    setTikzImportWarnings([]);
-    setTikzPanel("import");
   }
 
   function handleApplyTikzImport() {
@@ -2064,14 +2068,14 @@ export function FeynmanDiagramEditor({
                   <ColorInput
                     value={selectedVertex.style?.fill ?? ""}
                     placeholder="inherit"
-                    onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, style: { ...vertex.style, fill: v || undefined } })))}
+                    onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, style: setStyle(vertex.style, 'fill', v) })))}
                   />
                 </Field>
                 <Field label="stroke color">
                   <ColorInput
                     value={selectedVertex.style?.stroke ?? ""}
                     placeholder="inherit"
-                    onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, style: { ...vertex.style, stroke: v || undefined } })))}
+                    onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({ ...vertex, style: setStyle(vertex.style, 'stroke', v) })))}
                   />
                 </Field>
               </div>
@@ -2093,7 +2097,7 @@ export function FeynmanDiagramEditor({
                         placeholder="e.g. white or #fff"
                         onChange={(v) => commit(updateVertex(value, selectedVertex.id, (vertex) => ({
                           ...vertex,
-                          style: { ...vertex.style, backgroundFill: v || undefined }
+                          style: setStyle(vertex.style, 'backgroundFill', v)
                         })))}
                       />
                     </Field>
@@ -2214,7 +2218,7 @@ export function FeynmanDiagramEditor({
                 <ColorInput
                   value={selectedEdge.style?.color ?? ""}
                   placeholder="inherit"
-                  onChange={(v) => commit(updateEdge(value, selectedEdge.id, (edge) => ({ ...edge, style: { ...edge.style, color: v || undefined } })))}
+                  onChange={(v) => commit(updateEdge(value, selectedEdge.id, (edge) => ({ ...edge, style: setStyle(edge.style, 'color', v) })))}
                 />
               </Field>
 
@@ -2423,7 +2427,7 @@ export function FeynmanDiagramEditor({
                     <ColorInput
                       value={st.fill ?? ""}
                       placeholder="e.g. #aaccff or blue"
-                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, fill: v || undefined } })))}
+                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: setStyle(s.style, 'fill', v) })))}
                     />
                   </Field>
                 )}
@@ -2432,14 +2436,14 @@ export function FeynmanDiagramEditor({
                     <ColorInput
                       value={st.stroke ?? ""}
                       placeholder="inherit"
-                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, stroke: v || undefined } })))}
+                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: setStyle(s.style, 'stroke', v) })))}
                     />
                   </Field>
                   <Field label="stroke width">
                     <NumberInput
                       value={st.strokeWidth ?? 0}
                       step={0.5}
-                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, strokeWidth: v > 0 ? v : undefined } })))}
+                      onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: setStyle(s.style, 'strokeWidth', v > 0 ? v : undefined) })))}
                     />
                   </Field>
                 </div>
@@ -2457,7 +2461,7 @@ export function FeynmanDiagramEditor({
                       <ColorInput
                         value={st.backgroundFill ?? ""}
                         placeholder="e.g. white or #fff"
-                        onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: { ...s.style, backgroundFill: v || undefined } })))}
+                        onChange={(v) => commit(updateShape(value, shape.id, (s) => ({ ...s, style: setStyle(s.style, 'backgroundFill', v) })))}
                       />
                     </Field>
                   </>

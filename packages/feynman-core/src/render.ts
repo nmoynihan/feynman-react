@@ -45,7 +45,7 @@ function resolveVertexRadius(vertex: NormalizedVertex, diagram: NormalizedDiagra
   return vertex.style.vertexRadius ?? diagram.style.vertexRadius;
 }
 
-function trimInset(vertex: NormalizedVertex, diagram: NormalizedDiagram): number {
+function trimInset(_vertex: NormalizedVertex, _diagram: NormalizedDiagram): number {
   return 0;
 }
 
