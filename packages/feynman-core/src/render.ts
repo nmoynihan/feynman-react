@@ -46,21 +46,7 @@ function resolveVertexRadius(vertex: NormalizedVertex, diagram: NormalizedDiagra
 }
 
 function trimInset(vertex: NormalizedVertex, diagram: NormalizedDiagram): number {
-  if (vertex.kind === "none") {
-    return 0;
-  }
-
-  if (vertex.kind === "hook") {
-    return 0;
-  }
-
-  if (vertex.kind === "cross") {
-    // vertex.size overrides crossSize for the cross glyph as well
-    const crossSz = vertex.size !== undefined ? vertex.size : (vertex.style.crossSize ?? diagram.style.crossSize);
-    return crossSz * 0.8;
-  }
-
-  return resolveVertexRadius(vertex, diagram) + diagram.style.strokeWidth * 0.6;
+  return 0;
 }
 
 function edgeSegments(edge: NormalizedEdge, options: Required<BuildSvgSceneOptions>): number {
@@ -329,7 +315,7 @@ function buildEdgeLabels(
     });
 
     const centerIndex = Math.floor(sample.points.length / 2);
-    const arrowOffset = add(sample.points[centerIndex] ?? midpoint, scale(midpointNormal, offset - 8 * Math.sign(offset || 1)));
+    const arrowOffset = add(sample.points[centerIndex] ?? midpoint, scale(midpointNormal, offset - 12 * Math.sign(offset || 1)));
     const tangent = sample.tangents[centerIndex] ?? { x: 1, y: 0 };
     const arrowPath = buildArrowPath(
       `${edge.id}-momentum-arrow`,
@@ -430,7 +416,7 @@ function computeAutoViewBox(diagram: Diagram, normalized: NormalizedDiagram, opt
       const offset = (edge.style.momentumOffset ?? normalized.style.momentumOffset) * -labelDirection(edge);
       const momentumPoint = add(sample.midpoint, scale(sample.midpointNormal, offset));
       points.push(momentumPoint);
-      points.push(...(arrowSegment(add(momentumPoint, scale(sample.midpointNormal, -8 * Math.sign(offset || 1))), sample.midpointTangent, edge.momentumDirection, 36) ?? []));
+      points.push(...(arrowSegment(add(momentumPoint, scale(sample.midpointNormal, -12 * Math.sign(offset || 1))), sample.midpointTangent, edge.momentumDirection, 36) ?? []));
     }
   }
 

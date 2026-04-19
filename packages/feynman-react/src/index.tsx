@@ -381,11 +381,9 @@ export function FeynmanSceneSvg({
 }: FeynmanSceneSvgProps) {
   const { viewBox } = scene;
 
-  // Split shapes and vertices by layer
+  // Split shapes by layer
   const backShapes = scene.shapes.filter((s) => !s.layer || s.layer === "back");
   const frontShapes = scene.shapes.filter((s) => s.layer === "front");
-  const backVertices = scene.vertices.filter((v) => v.layer === "back");
-  const frontVertices = scene.vertices.filter((v) => !v.layer || v.layer === "front");
 
   return (
     <svg
@@ -416,11 +414,10 @@ export function FeynmanSceneSvg({
         ))}
       </defs>
 
-      {/* Back-layer shapes and blob vertices render before paths/edges */}
-      {(backShapes.length > 0 || backVertices.length > 0) ? (
+      {/* Back-layer shapes render before paths/edges */}
+      {backShapes.length > 0 ? (
         <g>
           {backShapes.map((shape) => <RenderShape key={shape.id} shape={shape} />)}
-          {backVertices.map((vertex) => <RenderVertex key={vertex.id} vertex={vertex} />)}
         </g>
       ) : null}
 
@@ -430,9 +427,9 @@ export function FeynmanSceneSvg({
         ))}
       </g>
 
-      {/* Front-layer vertex glyphs (default layer) */}
+      {/* All vertex glyphs render on top of edges */}
       <g>
-        {frontVertices.map((vertex) => (
+        {scene.vertices.map((vertex) => (
           <RenderVertex key={vertex.id} vertex={vertex} />
         ))}
       </g>
